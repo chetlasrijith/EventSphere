@@ -1,0 +1,7 @@
+/* Add this to your global CSS file */
+html,
+body {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
