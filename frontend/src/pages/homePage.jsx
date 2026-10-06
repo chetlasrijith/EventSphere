@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { toast } from 'react-toastify';
 import { getHomeStats, getFeaturedEvents } from '../api/endpoints';
 import { errorMessage } from '../api/client';
 import { formatDate } from '../utils/format';
@@ -121,6 +122,28 @@ function ListingPreview({ event }) {
     );
   }
 
+  const handleShare = async () => {
+    const url = new URL(`/eventDetails/${event.id}`, window.location.origin).toString();
+    const shareData = {
+      title: event.eventName,
+      text: `Take a look at ${event.eventName}`,
+      url,
+    };
+
+    try {
+      if (navigator.share) {
+        await navigator.share(shareData);
+        return;
+      }
+      if (!navigator.clipboard?.writeText) throw new Error('Clipboard unavailable');
+      await navigator.clipboard.writeText(url);
+      toast.success('Event link copied');
+    } catch (error) {
+      if (error?.name === 'AbortError') return;
+      window.prompt('Copy this event link', url);
+    }
+  };
+
   return (
     <div className="screenshot">
       <SectionLabel>Latest approved listing</SectionLabel>
@@ -150,10 +173,10 @@ function ListingPreview({ event }) {
             </p>
           )}
           <div className="btn-row" style={{ marginTop: 'var(--spacing-24)' }}>
-            <Button variant="primary" size="sm">
+            <Button to={`/eventDetails/${event.id}`} variant="primary" size="sm">
               Register
             </Button>
-            <Button variant="ghost" size="sm">
+            <Button variant="ghost" size="sm" onClick={handleShare}>
               Share
             </Button>
           </div>

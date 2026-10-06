@@ -61,6 +61,17 @@ def _set_cookie(response) -> str:
 
 
 class TestCookiePolicy:
+    @pytest.mark.parametrize(
+        "secret",
+        [
+            "insecure-development-secret-change-me",
+            "replace-me-with-a-long-random-string",
+        ],
+    )
+    def test_example_jwt_secrets_are_rejected(self, secret):
+        with pytest.raises(ValidationError, match="JWT_SECRET"):
+            config_module.Settings(jwt_secret=secret)
+
     async def test_same_origin_defaults_to_lax(self, make_client):
         """Local development: one origin, so the stricter policy applies."""
         client = make_client()

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import re
 
 import cloudinary
@@ -44,8 +45,14 @@ async def upload_image(data: bytes, kind: str) -> str:
 
     folder = FOLDER_BY_KIND.get(kind, "misc")
     try:
-        result = await cloudinary.uploader.upload_async(
-            data, folder=folder, resource_type="image"
+        # The Cloudinary SDK is blocking-only (verified against 1.46.3: it
+        # exposes no *_async methods), so the call is pushed to a worker thread
+        # to keep the event loop free.
+        result = await asyncio.to_thread(
+            cloudinary.uploader.upload,
+            data,
+            folder=folder,
+            resource_type="image",
         )
     except Exception as exc:  # noqa: BLE001 - SDK raises many types
         raise APIError(502, f"Image upload failed: {exc}", code="upload_failed") from exc
@@ -79,7 +86,7 @@ async def delete_image(url: str, kind: str) -> bool:
     if not public_id or not settings.cloudinary_configured:
         return False
     try:
-        result = await cloudinary.uploader.destroy_async(public_id)
+        result = await asyncio.to_thread(cloudinary.uploader.destroy, public_id)
     except Exception:  # noqa: BLE001 - deletion must never fail a request
         return False
     return result.get("result") == "ok"

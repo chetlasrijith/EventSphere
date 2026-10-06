@@ -1,10 +1,13 @@
 import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
+import { fileURLToPath } from 'node:url';
+
+const frontendDir = path.dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig(({ mode }) => {
   // Load from the repo root so one .env serves both frontend and backend.
-  const env = loadEnv(mode, path.resolve(__dirname, '../'), '');
+  const env = loadEnv(mode, path.resolve(frontendDir, '../'), '');
 
   return {
     plugins: [react()],

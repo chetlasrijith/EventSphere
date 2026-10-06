@@ -10,7 +10,8 @@
 import axios from 'axios';
 
 const BASE_URL =
-  import.meta.env.VITE_BACKEND_SERVER || 'http://localhost:8000';
+  import.meta.env.VITE_BACKEND_SERVER ||
+  (import.meta.env.DEV ? 'http://localhost:8000' : '');
 
 export const api = axios.create({
   baseURL: BASE_URL,

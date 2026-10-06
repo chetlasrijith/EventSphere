@@ -53,10 +53,13 @@ class Settings(BaseSettings):
     @field_validator("jwt_secret")
     @classmethod
     def _reject_default_secret(cls, value: str) -> str:
-        if value == "insecure-development-secret-change-me":
+        if value in {
+            "insecure-development-secret-change-me",
+            "replace-me-with-a-long-random-string",
+        }:
             msg = (
-                "JWT_SECRET is not configured. Set it in backend/.env "
-                "(see backend/.env.example)."
+                "JWT_SECRET is missing or still uses an example value. Set a "
+                "unique random value in backend/.env or the deployment environment."
             )
             raise ValueError(msg)
         return value
