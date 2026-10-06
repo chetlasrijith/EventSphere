@@ -1,99 +1,152 @@
-import React, { useState, useEffect } from "react";
-import { Container, Row, Col, Card } from "react-bootstrap";
-import { useNavigate } from "react-router-dom";
-import axios from "axios";
+import React, { useEffect, useState } from 'react';
+import { toast } from 'react-toastify';
+import { myRegistrations, cancelRegistration } from '../../api/endpoints';
+import { errorMessage } from '../../api/client';
+import { formatDate } from '../../utils/format';
+import Button from '../../components/ui/Button';
+import PageHeader from '../../components/ui/PageHeader';
+import { Tag, StatusTag, EmptyState, PageLoading, PageError } from '../../components/ui/Surface';
 
-const EventList = () => {
-    const navigate = useNavigate();
-    const [events, setEvents] = useState([]);
-    const [error, setError] = useState(null);
-    const getFormattedDate = (dateString) => {
-        const date = new Date(dateString);
-        const day = date.getDate();
-        const suffix = (day) => {
-          if (day > 3 && day < 21) return 'th';
-          switch (day % 10) {
-            case 1: return 'st';
-            case 2: return 'nd';
-            case 3: return 'rd';
-            default: return 'th';
-          }
-        };
-        const month = date.toLocaleString('en-GB', { month: 'long' });
-        const year = date.getFullYear();
-        return `${day}${suffix(day)} ${month} ${year}`;
-      };
+/**
+ * The attendee's registrations.
+ *
+ * Withdrawing is destructive, so it is the only place in the app that opens a
+ * `confirm()` — cancelling a registration cannot be undone from anywhere else.
+ */
+export default function MyEventList() {
+  const [registrations, setRegistrations] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [pendingId, setPendingId] = useState(null);
 
-    useEffect(() => {
-        const fetchEvent = async () => {
-            try {
-                console.log("Hello")
-                const response = await axios.get(`${import.meta.env.VITE_BACKEND_SERVER}/api/attendee/myevent-list`, {
-                    withCredentials: true,
-                });
-                console.log(response)
-                console.log("Fetched Events:", response.data.events?.length || response.data.length);
-                
-                setEvents(response.data.events || response.data);
-            } catch (err) {
-                console.error("Failed to fetch event details:", err);
-                setError("Failed to fetch events. Please try again later.");
-            }
-        };
-        fetchEvent();
-    }, []);
-
-    const handleCardClick = (eventId) => {
-        navigate(`/attendee/events/${eventId}`);
+  useEffect(() => {
+    let cancelled = false;
+    myRegistrations()
+      .then((data) => !cancelled && setRegistrations(data || []))
+      .catch((err) => !cancelled && setError(errorMessage(err, 'Could not load your events')))
+      .finally(() => !cancelled && setLoading(false));
+    return () => {
+      cancelled = true;
     };
+  }, []);
 
-     const approvedEvents = events;//.filter(event => event.status === "approved");
+  const handleWithdraw = async (registrationId, eventName) => {
+    if (!window.confirm(`Cancel your registration for “${eventName}”? This cannot be undone.`)) {
+      return;
+    }
 
+    setPendingId(registrationId);
+    try {
+      await cancelRegistration(registrationId);
+      setRegistrations((prev) => prev.filter((r) => r.registrationId !== registrationId));
+      toast.success('Registration cancelled');
+    } catch (err) {
+      toast.error(errorMessage(err, 'Could not cancel the registration'));
+    } finally {
+      setPendingId(null);
+    }
+  };
 
-    return (
-        <div style={{ backgroundColor: "#121212", color: "#F8FAFC", minHeight: "100vh", paddingTop: "20px" }}>
-            <Container>
-                <h1 className="text-center mb-4">Events Available</h1>
-                {error && <p className="text-danger text-center">{error}</p>}
-                <Row className="gy-4">
-                    {approvedEvents.length > 0 ? (
-                        approvedEvents.map((event) => (
-                            <Col md={6} lg={4} key={event._id}>
-                                <Card 
-                                    className="bg-dark text-light border-0 shadow-sm" 
-                                    onClick={() => handleCardClick(event._id)} 
-                                    style={{ cursor: "pointer" }}
-                                >
-                                    <Card.Img
-                                        variant="top"
-                                        src={event.banner || "/images/banner.webp"} 
-                                        alt={event.eventname}
-                                        style={{ height: "180px", objectFit: "cover" }}
-                                    />
-                                    <Card.Body>
-                                        <Card.Title className="mb-2" style={{ fontSize: "1.25rem", fontWeight: "bold" }}>
-                                            {event.eventname}
-                                        </Card.Title>
-                                        <Card.Text className="mb-3">
-                                            <div><strong>Category:</strong> {event.category || "N/A"}</div>
-                                            <div><strong>Venue:</strong> {event.venue || "TBA"}</div>
-                                            <div>
-                                                <strong>Dates:</strong> {getFormattedDate(event.startDate)} - {getFormattedDate(event.endDate)}
-                                            </div>
-                                        </Card.Text>
-                                    </Card.Body>
-                                </Card>
-                            </Col>
-                        ))
-                    ) : (
-                        <p className="text-center">
-                            {events.length === 0 ? "Loading events..." : "No approved events found."}
-                        </p>
-                    )}
-                </Row>
-            </Container>
-        </div>
-    );
-};
+  if (loading) return <PageLoading label="Loading your events" />;
+  if (error) return <PageError message={error} />;
 
-export default EventList;
+  return (
+    <div className="app-page">
+      <div className="container">
+        <PageHeader
+          eyebrow="Attendee"
+          title="My events"
+          actions={
+            <Button to="/attendee/search-events" variant="outline">
+              Find more events
+            </Button>
+          }
+        >
+          Every event you are registered for, with the option to withdraw before
+          it takes place.
+        </PageHeader>
+
+        {!registrations.length ? (
+          <EmptyState
+            eyebrow="Nothing booked"
+            title="You have not registered for any events yet."
+            action={
+              <Button to="/attendee/search-events" variant="primary">
+                Browse events
+              </Button>
+            }
+          >
+            Once you register, the event and its ticket stay listed here.
+          </EmptyState>
+        ) : (
+          <div className="grid grid--3">
+            {registrations.map(({ registrationId, event }) => {
+              const past = event.status === 'completed';
+
+              return (
+                <article className="card" key={registrationId}>
+                  <div className="card__body" style={{ padding: 0 }}>
+                    <div
+                      style={{
+                        display: 'flex',
+                        gap: 'var(--spacing-8)',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                      }}
+                    >
+                      <Tag>{event.category}</Tag>
+                      <StatusTag status={event.status} />
+                    </div>
+
+                    <h2 className="card__title" style={{ marginTop: 'var(--spacing-16)' }}>
+                      {event.eventName}
+                    </h2>
+
+                    <p className="t-body-sm u-iron" style={{ marginTop: 'var(--spacing-8)' }}>
+                      {formatDate(event.startDate)}
+                    </p>
+                    <p className="t-body-sm u-graphite">
+                      {event.venue}
+                      {event.city ? `, ${event.city}` : ''}
+                    </p>
+
+                    <div
+                      className="btn-row"
+                      style={{
+                        marginTop: 'var(--spacing-24)',
+                        paddingTop: 'var(--spacing-16)',
+                        borderTop: '1px solid var(--color-hairline)',
+                        justifyContent: 'space-between',
+                      }}
+                    >
+                      {past ? (
+                        <span className="eyebrow">Event has taken place</span>
+                      ) : (
+                        <Button
+                          variant="hairline"
+                          size="sm"
+                          disabled={pendingId === registrationId}
+                          onClick={() => handleWithdraw(registrationId, event.eventName)}
+                        >
+                          {pendingId === registrationId ? 'Cancelling…' : 'Cancel registration'}
+                        </Button>
+                      )}
+                      <Button
+                        to={`/eventDetails/${event.id}`}
+                        variant="ghost"
+                        size="sm"
+                        arrow
+                      >
+                        Details
+                      </Button>
+                    </div>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}

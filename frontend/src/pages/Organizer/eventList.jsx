@@ -1,64 +1,111 @@
-import React, { useEffect, useState } from "react";
-import { Container, Row, Col, Card, Button } from "react-bootstrap";
-import { useNavigate } from "react-router-dom";
-import axios from "axios";
+import React, { useEffect, useMemo, useState } from 'react';
+import { listMyEvents } from '../../api/endpoints';
+import { errorMessage } from '../../api/client';
+import EventCard from '../../components/ui/EventCard';
+import Button from '../../components/ui/Button';
+import PageHeader, { Tabs } from '../../components/ui/PageHeader';
+import { EmptyState, PageLoading, PageError, Notice } from '../../components/ui/Surface';
 
+const FILTERS = [
+  { value: 'all', label: 'All' },
+  { value: 'pending', label: 'Pending' },
+  { value: 'approved', label: 'Approved' },
+  { value: 'cancelled', label: 'Cancelled' },
+  { value: 'completed', label: 'Completed' },
+];
 
-const EventList = () => {
-    const navigate = useNavigate();
-    const [events,setEvents] = useState([]);
-    const handleViewDetails = (eventId) => {
-        navigate(`${eventId}`);
-      };
-      const apiBaseUrl = "http://localhost:8000";
-const fetchEvents = async()=>{
-    try{
-      const response = await axios.get(`${apiBaseUrl}/api/organizer/events`, {
-        withCredentials: true,
-      });
-      setEvents(response.data.events);
-    }catch(err){
-        console.error(err);
-    }
-}
-useEffect(()=>{
-fetchEvents();
-},[])
+const TABS = FILTERS.map(({ value, label }) => ({ value, label }));
+
+/**
+ * The organizer's own events.
+ *
+ * Pending events are listed alongside published ones with their real status, so
+ * the organizer can see what is still in review without leaving the page.
+ */
+export default function EventList() {
+  const [events, setEvents] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [filter, setFilter] = useState('all');
+
+  useEffect(() => {
+    let cancelled = false;
+    listMyEvents({ page_size: 100 })
+      .then((data) => !cancelled && setEvents(data.items || []))
+      .catch((err) => !cancelled && setError(errorMessage(err, 'Could not load your events')))
+      .finally(() => !cancelled && setLoading(false));
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const visible = useMemo(
+    () => (filter === 'all' ? events : events.filter((event) => event.status === filter)),
+    [events, filter]
+  );
+
+  if (loading) return <PageLoading label="Loading your events" />;
+  if (error) return <PageError message={error} />;
+
+  const pendingCount = events.filter((event) => event.status === 'pending').length;
+
   return (
-    <div style={{ backgroundColor: "#121212", color: "#F8FAFC", minHeight: "100vh", paddingTop: "20px" }}>
-      <Container>
-        <h1 className="text-center mb-4">My Organized Events</h1>
-        <Row className="gy-4">
-          {events!=null&&events.map((event) => (
-            <Col md={6} lg={4} key={event.id}>
-              <Card className="bg-dark text-light border-0 shadow-sm">
-                <Card.Img variant="top" src={event?.banner||"/images/banner.webp"} alt={event.eventname} style={{ height: "180px", objectFit: "cover" }} />
-                <Card.Body>
-                  <Card.Title className="mb-2" style={{ fontSize: "1.25rem", fontWeight: "bold" }}>
-                    {event.eventname}
-                  </Card.Title>
-                  <Card.Text className="mb-3">
-                    <div><strong>Category:</strong> {event.category}</div>
-                    <div><strong>Venue:</strong> {event.venue}</div>
-                    <div><strong>Dates:</strong> {new Date(event.startDate).toLocaleDateString('en-GB')} - {new Date(event.endDate).toLocaleDateString('en-GB')}</div>
-                    <div><strong>Status:</strong> <span className={event.status === "approved" ? "text-success" : "text-warning"}>{event.status.charAt(0).toUpperCase() + event.status.slice(1)}</span></div>
-                  </Card.Text>
-                  <Button
-                    variant="outline-primary"
-                    size="sm"
-                    className="w-20"
-                    onClick={() => handleViewDetails(event._id)}
-                  >
-                    View Details
-                  </Button>
-                </Card.Body>
-              </Card>
-            </Col>
-          ))}
-        </Row>
-      </Container>
+    <div className="app-page">
+      <div className="container">
+        <PageHeader
+          eyebrow="Organizer"
+          title="My events"
+          actions={
+            <Button to="/organizer/create-event" variant="primary">
+              Create event
+            </Button>
+          }
+        >
+          {events.length
+            ? `${events.length} ${events.length === 1 ? 'event' : 'events'}${
+                pendingCount ? `, ${pendingCount} awaiting review` : ''
+              }.`
+            : 'Everything you publish will be listed here.'}
+        </PageHeader>
+
+        {events.length > 0 && (
+          <div style={{ marginBottom: 'var(--spacing-32)' }}>
+            <Tabs items={TABS} value={filter} onChange={setFilter} />
+          </div>
+        )}
+
+        {pendingCount > 0 && (
+          <Notice>
+            Submissions stay pending until an admin approves them. Attendees
+            cannot see them in search until then.
+          </Notice>
+        )}
+
+        {events.length === 0 ? (
+          <EmptyState
+            eyebrow="Nothing yet"
+            title="You have not created any events."
+            action={
+              <Button to="/organizer/create-event" variant="primary">
+                Create your first event
+              </Button>
+            }
+          >
+            A listing needs a name, a venue, a date range and a capacity. You can
+            add speakers and sponsors afterwards.
+          </EmptyState>
+        ) : visible.length === 0 ? (
+          <EmptyState eyebrow="Empty" title={`No ${filter} events.`}>
+            Switch the filter above to see your other listings.
+          </EmptyState>
+        ) : (
+          <div className="grid grid--3">
+            {visible.map((event) => (
+              <EventCard key={event.id} event={event} to={`/organizer/events/${event.id}`} showStatus />
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
-};
-
-export default EventList;
+}

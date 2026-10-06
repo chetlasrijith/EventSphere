@@ -1,0 +1,50 @@
+[project]
+name = "eventsphere-backend"
+version = "1.0.0"
+description = "EventSphere API — FastAPI + PostgreSQL"
+requires-python = ">=3.11"
+
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",
+    "sqlalchemy[asyncio]>=2.0.36",
+    "asyncpg>=0.30",
+    "alembic>=1.14",
+    "pydantic>=2.9",
+    "pydantic-settings>=2.6",
+    "python-jose[cryptography]>=3.3",
+    "passlib[bcrypt]>=1.7.4",
+    "bcrypt<4.1",
+    "python-multipart>=0.0.17",
+    "email-validator>=2.2",
+    "cloudinary>=1.44",
+    "httpx>=0.28",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3",
+    "pytest-asyncio>=0.24",
+    "anyio>=4.6",
+    # Sync driver, used only by the Alembic/metadata drift test. The app itself
+    # runs entirely on asyncpg.
+    "psycopg[binary]>=3.2",
+]
+
+[tool.pytest.ini_options]
+# Session-scoped async engine + fixtures need loop_scope="session" to survive
+# between tests; without it pytest-asyncio closes the loop after the first test.
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "session"
+asyncio_default_test_loop_scope = "session"
+testpaths = ["tests"]
+filterwarnings = [
+    "ignore::DeprecationWarning",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["app"]

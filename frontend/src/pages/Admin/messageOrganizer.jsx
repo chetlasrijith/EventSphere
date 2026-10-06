@@ -1,137 +1,214 @@
-import React, { useState } from "react";
-import { Container, Row, Col, Form, Button, Card } from "react-bootstrap";
-import { FiMessageCircle, FiSend } from "react-icons/fi";
-import axios from "axios";
-import { useNavigate } from "react-router-dom";
+import React, { useEffect, useState } from 'react';
+import { listEvents, listOrganizers, messageOrganizer } from '../../api/endpoints';
+import { errorMessage } from '../../api/client';
+import Button from '../../components/ui/Button';
+import { Input, Textarea, Select, Check } from '../../components/ui/Field';
+import PageHeader from '../../components/ui/PageHeader';
+import { Notice, SectionLabel, StatusTag, EmptyState } from '../../components/ui/Surface';
 
-import { toast } from 'react-toastify';
-import 'react-toastify/dist/ReactToastify.css';
+/**
+ * Admin message composer.
+ *
+ * Targets one organizer or a whole review queue. The old app sent a bare
+ * `username`, which broke silently for any organizer whose name contained a
+ * space — the id is used instead.
+ */
+export default function MessageOrganizer() {
+  const [mode, setMode] = useState('single');
+  const [organizers, setOrganizers] = useState([]);
+  const [pending, setPending] = useState([]);
+  const [selected, setSelected] = useState('');
+  const [form, setForm] = useState({ subject: '', message: '' });
+  const [errors, setErrors] = useState({});
+  const [feedback, setFeedback] = useState(null);
+  const [sending, setSending] = useState(false);
 
-const AdminMessagePage = () => {
-  const Navigator = useNavigate();
-  const [formData, setFormData] = useState({
-    username:"",
-    subject: "",
-    message: "",
-  });
+  useEffect(() => {
+    listOrganizers({ page_size: 100 })
+      .then((data) => setOrganizers(data.items || []))
+      .catch(() => {});
+    listEvents({ status: 'pending', page_size: 100 })
+      .then((data) => setPending(data.items || []))
+      .catch(() => {});
+  }, []);
 
-  const [submitted, setSubmitted] = useState(false);
-  const [error, setError] = useState(null);
-
-  const handleChange = (e) => {
-    const { name, value } = e.target;
-    setFormData({ ...formData, [name]: value });
-  };
-
-  const handleSubmit = async (e) => {
+  const handleSend = async (e) => {
     e.preventDefault();
-    setError(null);
+    setFeedback(null);
 
+    const next = {};
+    if (!form.subject.trim()) next.subject = 'Subject is required.';
+    if (!form.message.trim()) next.message = 'Message is required.';
+    if (mode === 'single' && !selected) next.recipient = 'Choose an organizer.';
+    setErrors(next);
+    if (Object.keys(next).length) return;
+
+    setSending(true);
     try {
-
-      const response = await axios.post(`${import.meta.env.VITE_BACKEND_SERVER}/api/admin/message-organizer`, {
-        username:formData.username,
-        subject: formData.subject,
-        message: formData.message
-      },{
-        withCredentials:true,
+      const result = await messageOrganizer(selected, {
+        subject: form.subject.trim(),
+        message: form.message.trim(),
       });
-      setSubmitted(true);
-      if(response.status==200){
-        toast.success("message sent to admin successfully");
-        Navigator("/");
-      }
-      else{
-        toast.success(response.message);
-      }
-      setTimeout(() => {
-        setSubmitted(false);
-        setFormData({ subject: "", message: "" });
-      }, 3000);
+      setFeedback({ tone: '', text: `Message delivered to ${result.recipient}.` });
+      setForm({ subject: '', message: '' });
     } catch (err) {
-      setError("Failed to send your message. Please try again later.");
+      setFeedback({ tone: 'alert', text: errorMessage(err, 'Could not send the message') });
+    } finally {
+      setSending(false);
     }
   };
 
   return (
-    <Container fluid className="py-5" style={{ backgroundColor: "#121212", minHeight: "100vh" }}>
-      <Row className="justify-content-center">
-        <Col md={8} lg={6}>
-          <Card className="shadow-lg border-0" style={{ backgroundColor: "#1e1e1e", color: "#f5f5f5" }}>
-            <Card.Body>
-              <h3 className="text-center mb-4" style={{ color: "#f5f5f5" }}>
-                <FiMessageCircle className="me-2" /> Message to Organizer
-              </h3>
-              <p className="text-center mb-4" style={{ color: "#d3d3d3", fontSize: "1rem" }}>
-                Send important messages or updates to an organizer.
-              </p>
-              <Form onSubmit={handleSubmit}>
-              <Form.Group className="mb-3">
-                  <Form.Label style={{ color: "#f5f5f5" }}>Organizer username</Form.Label>
-                  <Form.Control
-                    type="text"
-                    placeholder="Enter organizer username"
-                    name="username"
-                    value={formData.username}
-                    onChange={handleChange}
-                    maxLength={50}
-                    required
-                    style={{ backgroundColor: "#2a2a2a", color: "#f5f5f5", border: "1px solid #444" }}
-                  />
-                </Form.Group>
-                <Form.Group className="mb-3">
-                  <Form.Label style={{ color: "#f5f5f5" }}>Subject</Form.Label>
-                  <Form.Control
-                    type="text"
-                    placeholder="Enter subject"
-                    name="subject"
-                    value={formData.subject}
-                    onChange={handleChange}
-                    maxLength={50}
-                    required
-                    style={{ backgroundColor: "#2a2a2a", color: "#f5f5f5", border: "1px solid #444" }}
-                  />
-                </Form.Group>
-                <Form.Group className="mb-4">
-                  <Form.Label style={{ color: "#f5f5f5" }}>Your Message</Form.Label>
-                  <Form.Control
-                    as="textarea"
-                    rows={5}
-                    placeholder="Write your message here"
-                    name="message"
-                    value={formData.message}
-                    onChange={handleChange}
-                    required
-                    style={{ backgroundColor: "#2a2a2a", color: "#f5f5f5", border: "1px solid #444" }}
-                  />
-                </Form.Group>
-                <div className="text-center">
-                  <Button
-                    type="submit"
-                    variant="primary"
-                    className="d-flex align-items-center justify-content-center"
-                    style={{ backgroundColor: "#007bff", borderColor: "#007bff", padding: "10px 20px", borderRadius: "30px" }}
-                  >
-                    <FiSend className="me-2" /> Send
-                  </Button>
-                </div>
-              </Form>
-              {submitted && (
-                <div className="mt-4 alert alert-success text-center" style={{ backgroundColor: "#1e1e1e", color: "#4caf50" }}>
-                  Your message has been successfully sent to the organizer!
-                </div>
-              )}
-              {error && (
-                <div className="mt-4 alert alert-danger text-center" style={{ backgroundColor: "#1e1e1e", color: "#f44336" }}>
-                  {error}
-                </div>
-              )}
-            </Card.Body>
-          </Card>
-        </Col>
-      </Row>
-    </Container>
-  );
-};
+    <div className="app-page">
+      <div className="container">
+        <PageHeader eyebrow="Admin" title="Message an organizer">
+          Reach a single organizer directly, or review what is waiting in the
+          queue before you decide.
+        </PageHeader>
 
-export default AdminMessagePage;
+        <div className="split" style={{ alignItems: 'start' }}>
+          <form className="card card--pad-lg" onSubmit={handleSend} noValidate>
+            <SectionLabel>Recipient</SectionLabel>
+
+            <div className="stack-sm" style={{ marginTop: 'var(--spacing-16)' }}>
+              <Check
+                type="radio"
+                name="mode"
+                label="One organizer"
+                checked={mode === 'single'}
+                onChange={() => setMode('single')}
+              />
+              <Check
+                type="radio"
+                name="mode"
+                label="Review the pending queue instead"
+                checked={mode === 'review'}
+                onChange={() => setMode('review')}
+              />
+            </div>
+
+            {mode === 'single' ? (
+              <div style={{ marginTop: 'var(--spacing-24)' }}>
+                <Select
+                  label="Organizer"
+                  value={selected}
+                  onChange={(e) => setSelected(e.target.value)}
+                  error={errors.recipient}
+                >
+                  <option value="">Select an organizer</option>
+                  {organizers.map((org) => (
+                    <option key={org.id} value={org.id}>
+                      {org.username} — {org.email}
+                    </option>
+                  ))}
+                </Select>
+              </div>
+            ) : (
+              <Notice tone="plain">
+                <span className="t-body-sm u-iron">
+                  To message organizers about a specific submission, use the cancel
+                  action on that event in the review queue — the reason is recorded
+                  and the organizer is notified.
+                </span>
+              </Notice>
+            )}
+
+            <SectionLabel className="u-mt-24" />
+
+            <div style={{ marginTop: 'var(--spacing-20)' }}>
+              <Input
+                label="Subject"
+                maxLength={200}
+                value={form.subject}
+                onChange={(e) => setForm((f) => ({ ...f, subject: e.target.value }))}
+                error={errors.subject}
+              />
+              <Textarea
+                label="Message"
+                rows={6}
+                maxLength={5000}
+                value={form.message}
+                onChange={(e) => setForm((f) => ({ ...f, message: e.target.value }))}
+                error={errors.message}
+              />
+            </div>
+
+            {feedback && (
+              <div style={{ marginTop: 'var(--spacing-20)' }}>
+                <Notice tone={feedback.tone}>{feedback.text}</Notice>
+              </div>
+            )}
+
+            <div
+              className="btn-row"
+              style={{ marginTop: 'var(--spacing-24)', justifyContent: 'flex-end' }}
+            >
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  setForm({ subject: '', message: '' });
+                  setErrors({});
+                  setFeedback(null);
+                }}
+                disabled={sending}
+              >
+                Clear
+              </Button>
+              <Button type="submit" disabled={sending || mode !== 'single'}>
+                {sending ? 'Sending…' : 'Send message'}
+              </Button>
+            </div>
+          </form>
+
+          {/* The pending queue, as a quiet list beside the composer. */}
+          <div className="card">
+            <SectionLabel>Awaiting review</SectionLabel>
+
+            {!pending.length ? (
+              <div style={{ marginTop: 'var(--spacing-16)' }}>
+                <EmptyState eyebrow="Clear" title="Nothing awaiting review.">
+                  New organizer submissions will appear here.
+                </EmptyState>
+              </div>
+            ) : (
+              <ul className="stack" style={{ marginTop: 'var(--spacing-20)' }}>
+                {pending.map((event) => (
+                  <li
+                    key={event.id}
+                    style={{
+                      paddingBottom: 'var(--spacing-16)',
+                      borderBottom: '1px solid var(--color-hairline)',
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: 'flex',
+                        gap: 'var(--spacing-12)',
+                        justifyContent: 'space-between',
+                        alignItems: 'flex-start',
+                      }}
+                    >
+                      <span className="t-body u-ink">{event.eventName}</span>
+                      <StatusTag status={event.status} />
+                    </div>
+                    <p className="t-body-sm u-smoke" style={{ marginTop: 4 }}>
+                      {[event.city, event.venue].filter(Boolean).join(' · ')}
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            )}
+
+            {pending.length > 0 && (
+              <div style={{ marginTop: 'var(--spacing-20)' }}>
+                <Button to="/admin/approve-pending-events" variant="hairline" size="sm" arrow>
+                  Open the review queue
+                </Button>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}

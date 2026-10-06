@@ -1,26 +1,27 @@
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
-import HomePage from '../pages/homePage.jsx';
-import EventDetails from '../pages/Attendee/eventDetails.jsx';
-import AttendeeTicket from '../pages/Attendee/ticket.jsx';
-import SearchEvents from '../pages/Attendee/searchEvents.jsx';
-import MyEventList from '../pages/Attendee/myEventList.jsx'
-import AttendeeProfile from '../pages/profile/attendeeProfile.jsx';
-import NotificationList from '../pages/Attendee/notificationList.jsx';
-import NotificationDetails from '../pages/Attendee/notificationDetails.jsx';
+import { Routes, Route } from 'react-router-dom';
+import ProtectedRoute from '../components/protectedRoute';
+import HomePage from '../pages/homePage';
+import EventDetails from '../pages/eventDetails';
+import Ticket from '../pages/Attendee/ticket';
+import SearchEvents from '../pages/Attendee/searchEvents';
+import MyEventList from '../pages/Attendee/myEventList';
+import MyTickets from '../pages/Attendee/myTickets';
+import AttendeeProfile from '../pages/Profile/attendeeProfile';
+import NotificationList from '../pages/Attendee/notificationList';
 
-function attendeePathRoute(){
-    return (
-          <Routes>
-            <Route path='/'  element={<HomePage />} />
-            <Route path="profile" element={<AttendeeProfile/>}/>
-            <Route path="/" element={<HomePage/>}/>
-            <Route path="myevent-list" element={<MyEventList/>}/>
-            <Route path="search-events" element={<SearchEvents/>}/>
-            <Route path="events/:id" element={<EventDetails/>}/>
-            <Route path="events/register/ticket" element={<AttendeeTicket />} />
-            <Route path='notifications' element={<NotificationList/>}/>
-            <Route path='notification/:notificationId' element={<NotificationDetails/>}/>
-          </Routes>
-      );
+const attendee = (element) => <ProtectedRoute element={element} roles={['Attendee']} />;
+
+export default function AttendeePathRouter() {
+  return (
+    <Routes>
+      <Route path="/" element={<HomePage />} />
+      <Route path="profile" element={attendee(<AttendeeProfile />)} />
+      <Route path="myevent-list" element={attendee(<MyEventList />)} />
+      <Route path="my-tickets" element={attendee(<MyTickets />)} />
+      <Route path="search-events" element={attendee(<SearchEvents />)} />
+      <Route path="events/:id" element={attendee(<EventDetails />)} />
+      <Route path="events/register/ticket" element={attendee(<Ticket />)} />
+      <Route path="notifications" element={attendee(<NotificationList />)} />
+    </Routes>
+  );
 }
-export default attendeePathRoute;

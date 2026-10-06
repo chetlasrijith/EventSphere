@@ -1,31 +1,26 @@
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
-import AttendeeSignupForm from '../pages/Auth/attendeeSignup.jsx';
-import AttendeeLoginForm from '../pages/Auth/attendeeLogin.jsx';
-import AdminSignupForm from '../pages/Auth/adminSignup.jsx';
-import AdminLoginForm from '../pages/Auth/adminLogin.jsx'
-import OrganizerProfile from '../pages/Profile/organizerProfile.jsx';
-import CreateEventForm from '../pages/Organizer/createEvent.jsx';
-import EventList from '../pages/Organizer/eventList.jsx';
-import EventDetails from '../pages/Organizer/eventDetails.jsx';
-import NotificationList from '../pages/Organizer/notificationList.jsx';
-import NotificationDetails from '../pages/Organizer/notificationDetails.jsx'
-import MessageAdmin from '../pages/Organizer/messageAdmin.jsx';
-import UpdateToAttendee from '../pages/Organizer/updateToAttendee.jsx';
-import HomePage from '../pages/homePage.jsx';
+import { Routes, Route } from 'react-router-dom';
+import ProtectedRoute from '../components/protectedRoute';
+import CreateEventForm from '../pages/Organizer/createEvent';
+import EventList from '../pages/Organizer/eventList';
+import OrganizerEventDetails from '../pages/Organizer/eventDetails';
+import OrganizerProfile from '../pages/Profile/organizerProfile';
+import NotificationList from '../pages/Organizer/notificationList';
+import MessageAdmin from '../pages/Organizer/messageAdmin';
+import UpdateToAttendee from '../pages/Organizer/updateToAttendee';
 
-function organizerPathRoute(){
-    return (
-          <Routes>
-            <Route path='/'  element={<HomePage />} />
-            <Route path="profile" element={<OrganizerProfile/>}/>
-            <Route path="create-event" element={<CreateEventForm/>}/>
-            <Route path="events" element={<EventList/>}/>
-            <Route path="events/:eventId" element={<EventDetails/>}/>
-            <Route path="notifications" element={<NotificationList/>}/>
-            <Route path="notification/:notificationId" element={<NotificationDetails/>}/>
-            <Route path="messageAdmin" element={<MessageAdmin/>}/>
-            <Route path="updateToAttendees" element={<UpdateToAttendee/>}/>
-          </Routes>
-      );
+const organizer = (element) => <ProtectedRoute element={element} roles={['Organizer']} />;
+
+export default function OrganizerPathRouter() {
+  return (
+    <Routes>
+      <Route path="/" element={organizer(<EventList />)} />
+      <Route path="create-event" element={organizer(<CreateEventForm />)} />
+      <Route path="events" element={organizer(<EventList />)} />
+      <Route path="events/:eventId" element={organizer(<OrganizerEventDetails />)} />
+      <Route path="profile" element={organizer(<OrganizerProfile />)} />
+      <Route path="notifications" element={organizer(<NotificationList />)} />
+      <Route path="messageAdmin" element={organizer(<MessageAdmin />)} />
+      <Route path="updateToAttendees" element={organizer(<UpdateToAttendee />)} />
+    </Routes>
+  );
 }
-export default organizerPathRoute;

@@ -1,117 +1,95 @@
-import React, { useState } from "react";
-import { Container, Row, Col, Form, Button, Card } from "react-bootstrap";
-import { FiMessageCircle, FiSend } from "react-icons/fi";
-import axios from "axios";
-import { useNavigate } from "react-router-dom";
-
+import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { toast } from 'react-toastify';
-import 'react-toastify/dist/ReactToastify.css';
+import { messageAdmins } from '../../api/endpoints';
+import { errorMessage } from '../../api/client';
+import Button from '../../components/ui/Button';
+import { Input, Textarea } from '../../components/ui/Field';
+import PageHeader from '../../components/ui/PageHeader';
+import { SectionLabel, Notice } from '../../components/ui/Surface';
 
-const OrganizerQueryPage = () => {
-  const Navigator = useNavigate();
-  const [formData, setFormData] = useState({
-    subject: "",
-    message: "",
-  });
+/** Contact the admin team. Replies arrive as in-app notifications. */
+export default function MessageAdmin() {
+  const navigate = useNavigate();
+  const [form, setForm] = useState({ subject: '', message: '' });
+  const [errors, setErrors] = useState({});
+  const [sending, setSending] = useState(false);
 
-  const [submitted, setSubmitted] = useState(false);
-  const [error, setError] = useState(null);
-
-  const handleChange = (e) => {
-    const { name, value } = e.target;
-    setFormData({ ...formData, [name]: value });
+  const validate = () => {
+    const next = {};
+    if (!form.subject.trim()) next.subject = 'Subject is required.';
+    if (!form.message.trim()) next.message = 'Message is required.';
+    setErrors(next);
+    return Object.keys(next).length === 0;
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setError(null);
+    if (!validate()) return;
 
+    setSending(true);
     try {
-
-      const response = await axios.post(`${import.meta.env.VITE_BACKEND_SERVER}/api/organizer/messageAdmin`, formData,{
-        withCredentials:true
+      await messageAdmins({
+        subject: form.subject.trim(),
+        message: form.message.trim(),
       });
-      setSubmitted(true);
-
-      setTimeout(() => {
-        setSubmitted(false);
-        setFormData({ subject: "", message: "" });
-      }, 3000); // Reset form after 3 seconds
-      if(response.status==200){
-        toast.success("message sent to admin successfully");
-        Navigator("/");
-      }
+      toast.success('Message sent to the admin team');
+      navigate('/organizer/events');
     } catch (err) {
-      setError("Failed to submit your message. Please try again later.");
+      toast.error(errorMessage(err, 'Could not send the message'));
+      setSending(false);
     }
   };
 
   return (
-    <Container fluid className="py-5" style={{ backgroundColor: "#121212", minHeight: "100vh" }}>
-      <Row className="justify-content-center">
-        <Col md={8} lg={6}>
-          <Card className="shadow-lg border-0" style={{ backgroundColor: "#1e1e1e", color: "#f5f5f5" }}>
-            <Card.Body>
-              <h3 className="text-center mb-4" style={{ color: "#f5f5f5" }}>
-                <FiMessageCircle className="me-2" /> Organizer Queries & Suggestions
-              </h3>
-              <p className="text-center mb-4" style={{ color: "#d3d3d3", fontSize: "1rem" }}>
-                Have any questions or suggestions about your event? Share them with the admin team!
-              </p>
-              <Form onSubmit={handleSubmit}>
-                <Form.Group className="mb-3">
-                  <Form.Label style={{ color: "#f5f5f5" }}>Subject</Form.Label>
-                  <Form.Control
-                    type="text"
-                    placeholder="Enter subject"
-                    name="subject"
-                    value={formData.subject}
-                    onChange={handleChange}
-                    maxLength={50}
-                    required
-                    style={{ backgroundColor: "#2a2a2a", color: "#f5f5f5", border: "1px solid #444" }}
-                  />
-                </Form.Group>
-                <Form.Group className="mb-4">
-                  <Form.Label style={{ color: "#f5f5f5" }}>Your Message</Form.Label>
-                  <Form.Control
-                    as="textarea"
-                    rows={5}
-                    placeholder="Write your message here"
-                    name="message"
-                    value={formData.message}
-                    onChange={handleChange}
-                    required
-                    style={{ backgroundColor: "#2a2a2a", color: "#f5f5f5", border: "1px solid #444" }}
-                  />
-                </Form.Group>
-                <div className="text-center">
-                  <Button
-                    type="submit"
-                    variant="primary"
-                    className="d-flex align-items-center justify-content-center"
-                    style={{ backgroundColor: "#007bff", borderColor: "#007bff", padding: "10px 20px", borderRadius: "30px" }}
-                  >
-                    <FiSend className="me-2" /> Submit
-                  </Button>
-                </div>
-              </Form>
-              {submitted && (
-                <div className="mt-4 alert alert-success text-center" style={{ backgroundColor: "#1e1e1e", color: "#4caf50" }}>
-                  Your message has been successfully sent to the admin!
-                </div>
-              )}
-              {error && (
-                <div className="mt-4 alert alert-danger text-center" style={{ backgroundColor: "#1e1e1e", color: "#f44336" }}>
-                  {error}
-                </div>
-              )}
-            </Card.Body>
-          </Card>
-        </Col>
-      </Row>
-    </Container>
-  );
-};
+    <div className="app-page">
+      <div className="container container--narrow">
+        <PageHeader eyebrow="Organizer" title="Contact the admin team">
+          Reaches every admin account. Replies arrive in your notifications.
+        </PageHeader>
 
-export default OrganizerQueryPage;
+        <form className="card card--pad-lg" onSubmit={handleSubmit} noValidate>
+          <SectionLabel>Message</SectionLabel>
+
+          <div style={{ marginTop: 'var(--spacing-20)' }}>
+            <Input
+              label="Subject"
+              maxLength={200}
+              value={form.subject}
+              onChange={(e) => setForm((f) => ({ ...f, subject: e.target.value }))}
+              error={errors.subject}
+            />
+            <Textarea
+              label="Message"
+              rows={8}
+              maxLength={5000}
+              value={form.message}
+              onChange={(e) => setForm((f) => ({ ...f, message: e.target.value }))}
+              error={errors.message}
+              hint="Include the event name if this is about a specific submission."
+            />
+          </div>
+
+          <div
+            className="btn-row"
+            style={{ marginTop: 'var(--spacing-24)', justifyContent: 'flex-end' }}
+          >
+            <Button variant="ghost" to="/organizer/events" disabled={sending}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={sending}>
+              {sending ? 'Sending…' : 'Send message'}
+            </Button>
+          </div>
+        </form>
+
+        <Notice tone="plain">
+          <span className="t-body-sm u-smoke">
+            Cancelling an event uses the review queue instead — the reason is
+            recorded against the event and you are notified directly.
+          </span>
+        </Notice>
+      </div>
+    </div>
+  );
+}

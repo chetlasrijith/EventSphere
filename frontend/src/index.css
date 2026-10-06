@@ -1,7 +1,9 @@
-/* Add this to your global CSS file */
-html,
-body {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
-}
+/**
+ * Global stylesheet entry.
+ *
+ * Order matters: tokens define the custom properties, base consumes them for
+ * typography and layout, components layer the control chrome on top.
+ */
+@import './styles/tokens.css';
+@import './styles/base.css';
+@import './styles/components.css';

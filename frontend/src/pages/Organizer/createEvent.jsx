@@ -1,371 +1,305 @@
-import React, { useState } from "react";
-
-import styles from './createEvent.module.css'
-
-import { Form, Button, Container, Row, Col } from "react-bootstrap";
-
-import { useNavigate } from "react-router-dom";
-
+import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { toast } from 'react-toastify';
-import 'react-toastify/dist/ReactToastify.css';
+import { createEvent } from '../../api/endpoints';
+import { errorMessage } from '../../api/client';
+import Button from '../../components/ui/Button';
+import { Input, Textarea, Select, Check } from '../../components/ui/Field';
+import PageHeader from '../../components/ui/PageHeader';
+import { SectionLabel, Notice } from '../../components/ui/Surface';
 
-import axios from "axios";
+const EMPTY = {
+  eventName: '',
+  category: '',
+  description: '',
+  startDate: '',
+  endDate: '',
+  venue: '',
+  street: '',
+  city: '',
+  state: '',
+  postalCode: '',
+  country: '',
+  eventType: 'public',
+  ticketsRequired: false,
+  price: 0,
+  maxAttendees: 50,
+  speakers: '',
+  services: '',
+  sponsors: '',
+};
 
+const ADDRESS_FIELDS = [
+  ['street', 'Street'],
+  ['city', 'City'],
+  ['state', 'State'],
+  ['postalCode', 'Postal code'],
+  ['country', 'Country'],
+];
 
-const CreateEventForm = () => {
+const LIST_FIELDS = [
+  ['speakers', 'Speakers'],
+  ['services', 'Services'],
+  ['sponsors', 'Sponsors'],
+];
 
-  const apiBaseUrl = "http://localhost:8000";
+/** Comma- or newline-separated textarea -> string[]. */
+const splitList = (value) =>
+  value
+    .split(/[\n,]/)
+    .map((item) => item.trim())
+    .filter(Boolean);
 
+/**
+ * Create an event.
+ *
+ * Submitting creates a *pending* event: it does not appear in search until an
+ * admin approves it. The form says so up front rather than letting the organizer
+ * discover it after the fact.
+ */
+export default function CreateEvent() {
   const navigate = useNavigate();
+  const [form, setForm] = useState(EMPTY);
+  const [errors, setErrors] = useState({});
+  const [serverError, setServerError] = useState('');
+  const [submitting, setSubmitting] = useState(false);
 
-  const [formData, setFormData] = useState({
-    eventname: "",
-    category: "",
-    startDate: "",
-    endDate: "",
-    duration: "",
-    venue: "",
-    address: {
-      street: "",
-      city: "",
-      state: "",
-      postalCode: "",
-      country: "",
-    },
-    eventType: "public",
-    ticketsRequired: false,
-    price: 0,
-    maxAttendees: "",
-    speakers: "",
-    services: "",
-    sponsers: "",
-  });
-
-  const handleChange = (e) => {
-    const { name, value } = e.target;
-
-    if (name.includes("address.")) {
-      const key = name.split(".")[1];
-      setFormData({
-        ...formData,
-        address: { ...formData.address, [key]: value },
-      });
-    } else {
-      setFormData({
-        ...formData,
-        [name]: e.target.type === "checkbox" ? e.target.checked : value,
-      });
-    }
+  const update = (key) => (e) => {
+    const value = e.target.type === 'checkbox' ? e.target.checked : e.target.value;
+    setForm((prev) => ({ ...prev, [key]: value }));
   };
 
-  const handleSubmit = async() => {
-    try{
-        const response=await axios.post(`${apiBaseUrl}/api/organizer/create-event`,formData, {
-        withCredentials: true,
+  // Validate the date pair on change rather than only on submit, so the error
+  // appears while the organizer is still looking at both fields.
+  useEffect(() => {
+    setErrors((prev) => {
+      const invalid = Boolean(
+        form.startDate && form.endDate && new Date(form.endDate) <= new Date(form.startDate)
+      );
+      const message = invalid ? 'End must be after the start' : undefined;
+      if (prev.endDate === message) return prev;
+      return { ...prev, endDate: message };
+    });
+  }, [form.startDate, form.endDate]);
+
+  const validate = () => {
+    const next = {};
+    if (!form.eventName.trim()) next.eventName = 'Event name is required.';
+    if (!form.category.trim()) next.category = 'Category is required.';
+    if (!form.startDate) next.startDate = 'Start date is required.';
+    if (!form.endDate) next.endDate = 'End date is required.';
+    else if (new Date(form.endDate) <= new Date(form.startDate))
+      next.endDate = 'End must be after the start.';
+    if (!form.venue.trim()) next.venue = 'Venue is required.';
+    ADDRESS_FIELDS.forEach(([key, label]) => {
+      if (!form[key].trim()) next[key] = `${label} is required.`;
+    });
+    if (!form.maxAttendees || Number(form.maxAttendees) < 1)
+      next.maxAttendees = 'Enter at least 1 attendee.';
+    if (form.ticketsRequired && Number(form.price) < 0)
+      next.price = 'Price cannot be negative.';
+    setErrors(next);
+    return Object.keys(next).length === 0;
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setServerError('');
+    if (!validate()) return;
+
+    setSubmitting(true);
+    try {
+      await createEvent({
+        event_name: form.eventName.trim(),
+        category: form.category.trim(),
+        description: form.description.trim() || undefined,
+        start_date: new Date(form.startDate).toISOString(),
+        end_date: new Date(form.endDate).toISOString(),
+        venue: form.venue.trim(),
+        address: {
+          street: form.street.trim(),
+          city: form.city.trim(),
+          state: form.state.trim(),
+          postal_code: form.postalCode.trim(),
+          country: form.country.trim(),
+        },
+        event_type: form.eventType,
+        tickets_required: form.ticketsRequired,
+        price: Number(form.price) || 0,
+        max_attendees: Number(form.maxAttendees),
+        speakers: splitList(form.speakers),
+        services: splitList(form.services),
+        sponsors: splitList(form.sponsors),
       });
-      if(response.status==200){
-        toast.success(`${formData.eventname} event created successfully`);
-        navigate("/");
-        window.location.reload();
-      }
-    }catch(err){
-        toast.error(err);
+      toast.success('Event submitted. It is now pending admin approval.');
+      navigate('/organizer/events');
+    } catch (err) {
+      setServerError(errorMessage(err, 'Could not create the event'));
+      setSubmitting(false);
     }
   };
 
   return (
-    <div className="p-4 rounded mt-5 " style={{ backgroundColor: "#121212", color: "#e0e0e0" }}>
-    {/* <Container className="p-4 rounded mt-5 " style={{ backgroundColor: "#121212", color: "#e0e0e0" }}> */}
-      <h2 className="text-center mb-4">Create Event</h2>
-      <Form onSubmit={handleSubmit}>
-        <Row className="mb-3">
-          <Col>
-            <Form.Group>
-              <Form.Label>Event Name</Form.Label>
-              <Form.Control
-                type="text"
-                name="eventname"
-                placeholder="Enter event name"
-                value={formData.eventname}
-                onChange={handleChange}
-                required
-                style={{ backgroundColor: "#1e1e1e", color: "#F8FAFC", border: "1px solid #444" }}
-                className={styles.customPlaceholder}
-              />
-            </Form.Group>
-          </Col>
-          <Col>
-            <Form.Group>
-              <Form.Label>Category</Form.Label>
-              <Form.Control
-                type="text"
-                name="category"
-                placeholder="Enter category"
-                value={formData.category}
-                onChange={handleChange}
-                className={styles.customPlaceholder}
-                required
-                style={{ backgroundColor: "#1e1e1e", color: "#fff", border: "1px solid #444" }}
-              />
-            </Form.Group>
-          </Col>
-        </Row>
+    <div className="app-page">
+      <div className="container container--reading">
+        <PageHeader eyebrow="Organizer" title="Create an event">
+          Submissions go into the admin review queue before they appear in
+          search. You can adjust venue and capacity afterwards.
+        </PageHeader>
 
-        <Row className="mb-3">
-          <Col>
-            <Form.Group>
-              <Form.Label>Start Date</Form.Label>
-              <Form.Control
-                type="date"
-                name="startDate"
-                value={formData.startDate}
-                onChange={handleChange}
-                className={styles.customPlaceholder}
-                required
-                style={{ backgroundColor: "#1e1e1e", color: "#fff", border: "1px solid #444" }}
-              />
-            </Form.Group>
-          </Col>
-          <Col>
-            <Form.Group>
-              <Form.Label>End Date</Form.Label>
-              <Form.Control
-                type="date"
-                name="endDate"
-                value={formData.endDate}
-                onChange={handleChange}
-                className={styles.customPlaceholder}
-                required
-                style={{ backgroundColor: "#1e1e1e", color: "#fff", border: "1px solid #444" }}
-              />
-            </Form.Group>
-          </Col>
-        </Row>
+        {serverError && <Notice tone="alert">{serverError}</Notice>}
 
-        <Row className="mb-3">
-          <Col>
-            <Form.Group>
-              <Form.Label>Venue</Form.Label>
-              <Form.Control
-                type="text"
-                name="venue"
-                placeholder="Enter venue"
-                value={formData.venue}
-                onChange={handleChange}
-                className={styles.customPlaceholder}
-                required
-                style={{ backgroundColor: "#1e1e1e", color: "#fff", border: "1px solid #444" }}
-              />
-            </Form.Group>
-          </Col>
-        </Row>
+        <form className="card card--pad-lg" onSubmit={handleSubmit} noValidate>
+          {/* The basics */}
+          <SectionLabel>Event</SectionLabel>
 
-        <h5>Address</h5>
-        <Row className="mb-3">
-          <Col>
-            <Form.Group>
-              <Form.Label>Street</Form.Label>
-              <Form.Control
-                type="text"
-                name="address.street"
-                placeholder="Street"
-                value={formData.address.street}
-                onChange={handleChange}
-                className={styles.customPlaceholder}
-                required
-                style={{ backgroundColor: "#1e1e1e", color: "#fff", border: "1px solid #444" }}
-              />
-            </Form.Group>
-          </Col>
-          <Col>
-            <Form.Group>
-              <Form.Label>City</Form.Label>
-              <Form.Control
-                type="text"
-                name="address.city"
-                placeholder="City"
-                value={formData.address.city}
-                onChange={handleChange}
-                className={styles.customPlaceholder}
-                required
-                style={{ backgroundColor: "#1e1e1e", color: "#fff", border: "1px solid #444" }}
-              />
-            </Form.Group>
-          </Col>
-        </Row>
+          <div className="stack" style={{ marginTop: 'var(--spacing-20)' }}>
+            <Input
+              label="Event name"
+              value={form.eventName}
+              onChange={update('eventName')}
+              error={errors.eventName}
+            />
 
-        <Row className="mb-3">
-          <Col>
-            <Form.Group>
-              <Form.Label>State</Form.Label>
-              <Form.Control
-                type="text"
-                name="address.state"
-                placeholder="State"
-                value={formData.address.state}
-                onChange={handleChange}
-                className={styles.customPlaceholder}
-                required
-                style={{ backgroundColor: "#1e1e1e", color: "#fff", border: "1px solid #444" }}
+            <div className="grid grid--2">
+              <Input
+                label="Category"
+                value={form.category}
+                onChange={update('category')}
+                error={errors.category}
+                placeholder="Workshop, concert, meetup…"
               />
-            </Form.Group>
-          </Col>
-          <Col>
-            <Form.Group>
-              <Form.Label>Postal Code</Form.Label>
-              <Form.Control
-                type="text"
-                name="address.postalCode"
-                placeholder="Postal Code"
-                value={formData.address.postalCode}
-                onChange={handleChange}
-                className={styles.customPlaceholder}
-                required
-                style={{ backgroundColor: "#1e1e1e", color: "#fff", border: "1px solid #444" }}
+              <Input
+                label="Venue"
+                value={form.venue}
+                onChange={update('venue')}
+                error={errors.venue}
               />
-            </Form.Group>
-          </Col>
-        </Row>
+            </div>
 
-        <Row className="mb-3">
-          <Col>
-            <Form.Group>
-              <Form.Label>Country</Form.Label>
-              <Form.Control
-                type="text"
-                name="address.country"
-                placeholder="Country"
-                value={formData.address.country}
-                onChange={handleChange}
-                className={styles.customPlaceholder}
-                required
-                style={{ backgroundColor: "#1e1e1e", color: "#fff", border: "1px solid #444" }}
-              />
-            </Form.Group>
-          </Col>
-        </Row>
+            <Textarea
+              label="Description"
+              rows={3}
+              value={form.description}
+              onChange={update('description')}
+            />
 
-        <Row className="mb-3">
-          <Col>
-            <Form.Group>
-              <Form.Label>Event Type</Form.Label>
-              <Form.Select
-                name="eventType"
-                value={formData.eventType}
-                onChange={handleChange}
-                className={styles.customPlaceholder}
-                style={{ backgroundColor: "#1e1e1e", color: "#fff", border: "1px solid #444" }}
-              >
-                <option value="public">Public</option>
-                <option value="private">Private</option>
-              </Form.Select>
-            </Form.Group>
-          </Col>
-          <Col>
-            <Form.Group>
-              <Form.Label>Tickets Required</Form.Label>
-              <Form.Check
-                type="checkbox"
-                name="ticketsRequired"
-                label="Require Tickets"
-                checked={formData.ticketsRequired}
-                onChange={handleChange}
-                className={styles.customPlaceholder}
-                style={{ backgroundColor: "#1e1e1e", color: "#fff" }}
+            <div className="grid grid--2">
+              <Input
+                label="Starts"
+                type="datetime-local"
+                value={form.startDate}
+                onChange={update('startDate')}
+                error={errors.startDate}
               />
-            </Form.Group>
-          </Col>
-        </Row>
+              <Input
+                label="Ends"
+                type="datetime-local"
+                value={form.endDate}
+                onChange={update('endDate')}
+                error={errors.endDate}
+              />
+            </div>
+          </div>
 
-        <Row className="mb-3">
-          <Col>
-            <Form.Group>
-              <Form.Label>Price</Form.Label>
-              <Form.Control
+          {/* Address */}
+          <SectionLabel className="u-mt-48">Location</SectionLabel>
+
+          <div className="stack" style={{ marginTop: 'var(--spacing-20)' }}>
+            {ADDRESS_FIELDS.map(([key, label]) => (
+              <Input
+                key={key}
+                label={label}
+                value={form[key]}
+                onChange={update(key)}
+                error={errors[key]}
+              />
+            ))}
+          </div>
+
+          {/* Ticketing */}
+          <SectionLabel className="u-mt-48">Entry</SectionLabel>
+
+          <div className="stack" style={{ marginTop: 'var(--spacing-20)' }}>
+            <Select label="Visibility" value={form.eventType} onChange={update('eventType')}>
+              <option value="public">Public — listed in search</option>
+              <option value="private">Private — link only</option>
+            </Select>
+
+            <Check
+              label="Tickets required for entry"
+              checked={form.ticketsRequired}
+              onChange={update('ticketsRequired')}
+            />
+
+            {form.ticketsRequired && (
+              <div className="grid grid--2">
+                <Input
+                  label="Price"
+                  type="number"
+                  min="0"
+                  value={form.price}
+                  onChange={update('price')}
+                  error={errors.price}
+                />
+                <Input
+                  label="Maximum attendees"
+                  type="number"
+                  min="1"
+                  value={form.maxAttendees}
+                  onChange={update('maxAttendees')}
+                  error={errors.maxAttendees}
+                />
+              </div>
+            )}
+
+            {!form.ticketsRequired && (
+              <Input
+                label="Maximum attendees"
                 type="number"
-                name="price"
-                placeholder="Price per ticket"
-                value={formData.price}
-                onChange={handleChange}
-                className={styles.customPlaceholder}
-                disabled={!formData.ticketsRequired}
-                style={{ backgroundColor: "#1e1e1e", color: "#fff", border: "1px solid #444" }}
+                min="1"
+                value={form.maxAttendees}
+                onChange={update('maxAttendees')}
+                error={errors.maxAttendees}
+                hint="Capacity can be raised later; it cannot drop below who is already registered."
               />
-            </Form.Group>
-          </Col>
-          <Col>
-            <Form.Group>
-              <Form.Label>Max Attendees</Form.Label>
-              <Form.Control
-                type="number"
-                name="maxAttendees"
-                placeholder="Max Attendees"
-                value={formData.maxAttendees}
-                onChange={handleChange}
-                className={styles.customPlaceholder}
-                required
-                style={{ backgroundColor: "#1e1e1e", color: "#fff", border: "1px solid #444" }}
-              />
-            </Form.Group>
-          </Col>
-        </Row>
+            )}
+          </div>
 
-        <Row className="mb-3">
-          <Col>
-            <Form.Group>
-              <Form.Label>Speakers</Form.Label>
-              <Form.Control
-                type="text"
-                name="speakers"
-                placeholder="Enter speakers (comma separated)"
-                value={formData.speakers}
-                onChange={handleChange}
-                className={styles.customPlaceholder}
-                style={{ backgroundColor: "#1e1e1e", color: "#fff", border: "1px solid #444" }}
+          {/* Extras */}
+          <SectionLabel className="u-mt-48">Extra detail</SectionLabel>
+
+          <div className="stack" style={{ marginTop: 'var(--spacing-20)' }}>
+            {LIST_FIELDS.map(([key, label]) => (
+              <Textarea
+                key={key}
+                label={label}
+                rows={2}
+                value={form[key]}
+                onChange={update(key)}
+                hint="Separate entries with a comma or a new line."
               />
-            </Form.Group>
-          </Col>
-          <Col>
-            <Form.Group>
-              <Form.Label>Services</Form.Label>
-              <Form.Control
-                type="text"
-                name="services"
-                placeholder="Enter services (comma separated)"
-                value={formData.services}
-                onChange={handleChange}
-                className={styles.customPlaceholder}
-                style={{ backgroundColor: "#1e1e1e", color: "#fff", border: "1px solid #444" }}
-              />
-            </Form.Group>
-          </Col>
-          </Row>
-          <Row className="mb-3">
-          <Col>
-            <Form.Group>
-              <Form.Label>sponsers</Form.Label>
-              <Form.Control
-                type="text"
-                name="sponsers"
-                placeholder="Sponsers"
-                value={formData.sponsers}
-                onChange={handleChange}
-                className={styles.customPlaceholder}
-                required
-                style={{ backgroundColor: "#1e1e1e", color: "#fff", border: "1px solid #444" }}
-              />
-            </Form.Group>
-          </Col>
-        </Row>
-        <div className="text-center">
-          <Button variant="primary" onClick={handleSubmit}>
-            Submit Event
-          </Button>
-        </div>
-      </Form>
-    {/* </Container> */}
+            ))}
+          </div>
+
+          <div
+            className="btn-row"
+            style={{
+              marginTop: 'var(--spacing-48)',
+              paddingTop: 'var(--spacing-24)',
+              borderTop: '1px solid var(--color-hairline)',
+              justifyContent: 'flex-end',
+            }}
+          >
+            <Button variant="ghost" to="/organizer/events" disabled={submitting}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={submitting}>
+              {submitting ? 'Submitting…' : 'Submit for review'}
+            </Button>
+          </div>
+        </form>
+      </div>
     </div>
   );
-};
-
-export default CreateEventForm;
+}

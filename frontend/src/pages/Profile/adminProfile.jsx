@@ -1,86 +1,250 @@
-import React, { useState, useEffect } from "react";
-import axios from "axios";
-import "./AdminProfile.css";
+import React, { useEffect, useState } from 'react';
+import { toast } from 'react-toastify';
+import {
+  getAdminProfile,
+  updateAdminProfile,
+  getPendingAdmins,
+  approveAdmin,
+  rejectAdmin,
+} from '../../api/endpoints';
+import { errorMessage } from '../../api/client';
+import { formatDateTime } from '../../utils/format';
+import Button from '../../components/ui/Button';
+import { Input } from '../../components/ui/Field';
+import PageHeader from '../../components/ui/PageHeader';
+import {
+  Tag,
+  DataList,
+  Notice,
+  PageLoading,
+  PageError,
+  EmptyState,
+  SectionLabel,
+} from '../../components/ui/Surface';
 
-const AdminProfile = ({ onClose }) => {
-  const [adminData, setAdminData] = useState({
-    username: "",
-    role: "",
-    profileImage: "",
-  });
+/**
+ * Admin profile, plus the pending-access queue for SuperAdmins.
+ *
+ * The old app had no way to approve a pending admin from the UI, even though
+ * the backend had endpoints for it.
+ */
+export default function AdminProfile() {
+  const [admin, setAdmin] = useState(null);
+  const [draft, setDraft] = useState({ username: '', password: '' });
+  const [pending, setPending] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [errors, setErrors] = useState({});
+  const [saving, setSaving] = useState(false);
+  const [busyId, setBusyId] = useState(null);
 
-  const [isEditing, setIsEditing] = useState(false);
-  const [formData, setFormData] = useState({ username: "" });
-
-  const getAdminDetails = async () => {
-    try {
-      const response = await axios.get(`${import.meta.env.VITE_BACKEND_SERVER}/api/admin/getMe`, {
-        withCredentials: true,
-      });
-      setAdminData(response.data);
-      setFormData({ username: response.data.username });
-    } catch (err) {
-      console.log(err);
-    }
-  };
+  const isSuperAdmin = admin?.role === 'SuperAdmin';
 
   useEffect(() => {
-    getAdminDetails();
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const data = await getAdminProfile();
+        if (cancelled) return;
+        setAdmin(data);
+        setDraft({ username: data.username || '', password: '' });
+
+        if (data.role === 'SuperAdmin') {
+          const queue = await getPendingAdmins();
+          if (!cancelled) setPending(queue.items || []);
+        }
+      } catch (err) {
+        if (!cancelled) setError(errorMessage(err, 'Could not load your account'));
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
-  const handleInputChange = (e) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
-  };
+  const handleSave = async (e) => {
+    e.preventDefault();
 
-  const handleSave = async () => {
+    const next = {};
+    if (!draft.username.trim()) next.username = 'Username is required.';
+    if (draft.password && draft.password.length < 6)
+      next.password = 'Use at least 6 characters.';
+    setErrors(next);
+    if (Object.keys(next).length) return;
+
+    setSaving(true);
+    setError('');
     try {
-      await axios.put(`${import.meta.env.VITE_BACKEND_SERVER}/api/admin/update-profile`, formData, {
-        withCredentials: true,
-      });
-
-      setAdminData((prev) => ({ ...prev, username: formData.username }));
-      setIsEditing(false);
+      const payload = { username: draft.username.trim() };
+      if (draft.password) payload.password = draft.password;
+      const updated = await updateAdminProfile(payload);
+      setAdmin((prev) => ({ ...prev, ...updated }));
+      setDraft((d) => ({ ...d, password: '' }));
+      toast.success('Account updated');
     } catch (err) {
-      console.error("Error updating profile:", err);
+      setError(errorMessage(err, 'Could not save your account'));
+    } finally {
+      setSaving(false);
     }
   };
 
+  const decide = async (adminId, action, username) => {
+    if (
+      action === 'reject' &&
+      !window.confirm(`Decline ${username}'s request for admin access?`)
+    ) {
+      return;
+    }
+
+    setBusyId(adminId);
+    try {
+      if (action === 'approve') await approveAdmin(adminId);
+      else await rejectAdmin(adminId, 'Declined by SuperAdmin');
+      setPending((prev) => prev.filter((a) => a.id !== adminId));
+      toast.success(`${username} ${action}d`);
+    } catch (err) {
+      toast.error(errorMessage(err, 'The action failed'));
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  if (loading) return <PageLoading label="Loading account" />;
+  if (error && !admin) return <PageError message={error} />;
+
   return (
-    <div className="profile-container">
-      <div className="profile-card">
-        <button className="close-btn" onClick={onClose}>✖</button>
+    <div className="app-page">
+      <div className="container">
+        <PageHeader eyebrow="Administration" title="Your account">
+          Your admin credentials and, if you are a SuperAdmin, the queue of
+          accounts awaiting approval.
+        </PageHeader>
 
-        {/* Profile Image */}
-        {adminData.profileImage ? (
-          <img src={adminData.profileImage} alt="Profile" className="profile-img" />
-        ) : (
-          <div className="profile-img default">👤</div>
-        )}
+        {error && <Notice tone="alert">{error}</Notice>}
 
-        {/* Editable Profile Name */}
-        {isEditing ? (
-          <input
-            type="text"
-            name="username"
-            value={formData.username}
-            onChange={handleInputChange}
-            className="profile-input"
-          />
-        ) : (
-          <h2 className="profile-name">{adminData.username}</h2>
-        )}
+        <div className="split" style={{ alignItems: 'start' }}>
+          <form className="card card--pad-lg" onSubmit={handleSave} noValidate>
+            <SectionLabel>Account</SectionLabel>
 
-        <p className="profile-role">{adminData.role}</p>
+            <div style={{ marginTop: 'var(--spacing-20)' }}>
+              <DataList
+                rows={[
+                  { key: 'Email', value: admin.email },
+                  { key: 'Role', value: admin.role },
+                  { key: 'Status', value: admin.status },
+                  { key: 'Joined', value: formatDateTime(admin.createdAt) },
+                ]}
+              />
+            </div>
 
-        {/* Edit/Save Buttons */}
-        {isEditing ? (
-          <button className="save-btn" onClick={handleSave}>Save Changes</button>
-        ) : (
-          <button className="update-btn" onClick={() => setIsEditing(true)}>Update Profile</button>
-        )}
+            <div className="stack" style={{ marginTop: 'var(--spacing-32)' }}>
+              <Input
+                label="Username"
+                value={draft.username}
+                onChange={(e) => setDraft((d) => ({ ...d, username: e.target.value }))}
+                error={errors.username}
+              />
+              <Input
+                label="New password"
+                type="password"
+                autoComplete="new-password"
+                value={draft.password}
+                onChange={(e) => setDraft((d) => ({ ...d, password: e.target.value }))}
+                error={errors.password}
+                hint="Leave blank to keep your current password."
+              />
+            </div>
+
+            <div
+              className="btn-row"
+              style={{
+                marginTop: 'var(--spacing-32)',
+                paddingTop: 'var(--spacing-24)',
+                borderTop: '1px solid var(--color-hairline)',
+                justifyContent: 'flex-end',
+              }}
+            >
+              <Button type="submit" disabled={saving}>
+                {saving ? 'Saving…' : 'Save account'}
+              </Button>
+            </div>
+          </form>
+
+          <div>
+            {!isSuperAdmin ? (
+              <div className="card card--warm">
+                <SectionLabel>Approvals</SectionLabel>
+                <p className="t-body-sm u-iron" style={{ marginTop: 'var(--spacing-16)' }}>
+                  Only a SuperAdmin can approve or decline new admin requests. Your
+                  account is <Tag plain>{admin.role}</Tag>.
+                </p>
+              </div>
+            ) : (
+              <div className="card">
+                <SectionLabel>Pending admin requests</SectionLabel>
+
+                {!pending.length ? (
+                  <div style={{ marginTop: 'var(--spacing-16)' }}>
+                    <EmptyState eyebrow="Clear" title="No pending requests.">
+                      New admin signup requests appear here for approval.
+                    </EmptyState>
+                  </div>
+                ) : (
+                  <ul className="stack" style={{ marginTop: 'var(--spacing-20)' }}>
+                    {pending.map((candidate) => (
+                      <li
+                        key={candidate.id}
+                        style={{
+                          paddingBottom: 'var(--spacing-16)',
+                          borderBottom: '1px solid var(--color-hairline)',
+                        }}
+                      >
+                        <div
+                          style={{
+                            display: 'flex',
+                            gap: 'var(--spacing-12)',
+                            justifyContent: 'space-between',
+                            alignItems: 'flex-start',
+                          }}
+                        >
+                          <div style={{ minWidth: 0 }}>
+                            <p className="t-body u-ink u-truncate">{candidate.username}</p>
+                            <p className="t-body-sm u-smoke u-truncate">{candidate.email}</p>
+                          </div>
+                          <Tag tone="pending">Pending</Tag>
+                        </div>
+
+                        <div className="btn-row" style={{ marginTop: 'var(--spacing-12)' }}>
+                          <Button
+                            variant="primary"
+                            size="sm"
+                            disabled={busyId === candidate.id}
+                            onClick={() => decide(candidate.id, 'approve', candidate.username)}
+                          >
+                            Approve
+                          </Button>
+                          <Button
+                            variant="destructive"
+                            size="sm"
+                            disabled={busyId === candidate.id}
+                            onClick={() => decide(candidate.id, 'reject', candidate.username)}
+                          >
+                            Decline
+                          </Button>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
       </div>
     </div>
   );
-};
-
-export default AdminProfile;
+}

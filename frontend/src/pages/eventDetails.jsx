@@ -1,152 +1,226 @@
-import React, { useEffect, useState } from "react";
-import { useParams, useNavigate } from "react-router-dom";
-import { Container, Row, Col, Card, ListGroup, Badge, Button } from "react-bootstrap";
-import { FaMapMarkerAlt, FaCalendarAlt, FaUsers, FaDollarSign, FaMicrophone, FaBuilding, FaConciergeBell } from "react-icons/fa";
-import axios from "axios";
-import { isAuthenticated } from "../utils/auth.js";
+import React, { useEffect, useState } from 'react';
+import { useParams, useNavigate, Link } from 'react-router-dom';
 import { toast } from 'react-toastify';
-import 'react-toastify/dist/ReactToastify.css';
+import { getEvent, registerForEvent } from '../api/endpoints';
+import { errorMessage } from '../api/client';
+import { formatDate, formatDateTime, formatPrice } from '../utils/format';
+import { hasRole } from '../utils/auth';
+import Button from '../components/ui/Button';
+import {
+  Tag,
+  StatusTag,
+  Notice,
+  DataList,
+  PageLoading,
+  PageError,
+  SectionLabel,
+} from '../components/ui/Surface';
 
+const HIGHLIGHTS = [
+  ['speakers', 'Speakers'],
+  ['services', 'Services'],
+  ['sponsors', 'Sponsors'],
+];
 
-const EventDetails = () => {
-    const { eventId } = useParams();
-    const navigate = useNavigate();
-    const [event, setEvent] = useState(null);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState(null);
-    const [isRegistered, setIsRegistered] = useState(false);
-    const getFormattedDate = (dateString) => {
-        const date = new Date(dateString);
-        const day = date.getDate();
-        const suffix = (day) => {
-          if (day > 3 && day < 21) return 'th';
-          switch (day % 10) {
-            case 1: return 'st';
-            case 2: return 'nd';
-            case 3: return 'rd';
-            default: return 'th';
-          }
-        };
-        const month = date.toLocaleString('en-GB', { month: 'long' });
-        const year = date.getFullYear();
-        return `${day}${suffix(day)} ${month} ${year}`;
-      };
+/** Chip list used for speakers / services / sponsors. */
+function Chips({ label, items }) {
+  if (!items?.length) return null;
+  return (
+    <div>
+      <SectionLabel>{label}</SectionLabel>
+      <div className="tag-list" style={{ marginTop: 'var(--spacing-12)' }}>
+        {items.map((item) => (
+          <Tag key={item} plain>
+            {item}
+          </Tag>
+        ))}
+      </div>
+    </div>
+  );
+}
 
-    useEffect(() => {
-        const fetchEvent = async () => {
-            try {
-                const response = await axios.get(`${import.meta.env.VITE_BACKEND_SERVER}/api/home/eventDetails/${eventId}`,{
-                    withCredentials:true,
-                });
-                setEvent(response.data);
-                setIsRegistered(response.data.isRegistered); // Assuming API returns this
-            } catch (err) {
-                setError("Failed to fetch event details");
-            } finally {
-                setLoading(false);
-            }
-        };
-        fetchEvent();
-    }, [eventId]);
+export default function EventDetails() {
+  const { eventId } = useParams();
+  const navigate = useNavigate();
+  const [event, setEvent] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [registering, setRegistering] = useState(false);
 
-    const handleRegister = async () => {
-        const decodedToken = isAuthenticated();
-        if (decodedToken == null || decodedToken.role !== "Attendee") {
-            toast.warning("Please login as an attendee");
-            return; // Exit the function since the condition is not met
-        }
-        try {
-            const response = await axios.post(`${import.meta.env.VITE_BACKEND_SERVER}/api/attendee/events/${eventId}/register`,{},{
-                withCredentials: true
-            });
-            toast.success("You have successfully registered");
-            setIsRegistered(true); // Update state after successful registration
-            navigate(`/attendee/events/register/ticket`, { state: { event: response.data.eventDetails } });
-        } catch (err) {
-            toast.warning(err.message);
-        }
+  useEffect(() => {
+    let cancelled = false;
+    getEvent(eventId)
+      .then((data) => !cancelled && setEvent(data))
+      .catch((err) => !cancelled && setError(errorMessage(err, 'Could not load the event')))
+      .finally(() => !cancelled && setLoading(false));
+    return () => {
+      cancelled = true;
     };
-    
+  }, [eventId]);
 
-    if (loading) return <p>Loading event details...</p>;
-    if (error) return <p>{error}</p>;
-    if (!event) return <p>No event found.</p>;
+  const handleRegister = async () => {
+    if (!hasRole('Attendee')) {
+      toast.warning('Sign in as an attendee to register');
+      navigate('/attendee/login', { state: { from: `/eventDetails/${eventId}` } });
+      return;
+    }
 
+    setRegistering(true);
+    try {
+      const result = await registerForEvent(eventId);
+      setEvent((prev) => ({ ...prev, isRegistered: true }));
+      toast.success('You are registered');
+      // The ticket page asks the server for a ticket rather than minting its
+      // own booking id in the browser.
+      navigate('/attendee/events/register/ticket', { state: { event: result.event } });
+    } catch (err) {
+      toast.error(errorMessage(err, 'Registration failed'));
+      setRegistering(false);
+    }
+  };
+
+  if (loading) return <PageLoading label="Loading event" />;
+  if (error)
     return (
-        <div style={{ backgroundColor: "#1e1e1e", color: "#F8FAFC", minHeight: "100vh" }}>
-            <Container>
-                <Card className="bg-dark text-light border-0 shadow-lg mb-4">
-                    <Card.Img variant="top" src={event.banner || '/images/banner.webp'} alt={event.eventname} style={{ maxHeight: "400px", objectFit: "cover", borderBottom: "4px solid #00bcd4" }} />
-                    <Card.ImgOverlay className="d-flex flex-column justify-content-center text-center" style={{ backgroundColor: "rgba(0, 0, 0, 0.4)" }}>
-                        <h1 style={{ fontWeight: "bold", fontSize: "2.75rem" }}>{event.eventname}</h1>
-                        <p><Badge bg="primary" className="me-2">{event.category}</Badge></p>
-                    </Card.ImgOverlay>
-                </Card>
-
-                <Row className="gy-4">
-                    <Col md={8}>
-                        <Card className="bg-dark text-light border-0 shadow-sm mb-4">
-                            <Card.Body>
-                                <h4 className="text-info mb-4">Event Details</h4>
-                                <ListGroup variant="flush" className="bg-dark">
-                                <ListGroup.Item className="bg-dark text-light border-0">
-                                <FaCalendarAlt className="me-2 text-primary" />
-                                <strong>Dates:</strong> {getFormattedDate(event.startDate)} - {getFormattedDate(event.endDate)}
-                                </ListGroup.Item>
-                                    <ListGroup.Item className="bg-dark text-light border-0"><FaMapMarkerAlt className="me-2 text-warning" /><strong>Venue:</strong> {event.venue}</ListGroup.Item>
-                                    <ListGroup.Item className="bg-dark text-light border-0"><FaUsers className="me-2 text-info" /><strong>Max Attendees:</strong> {event.maxAttendees}</ListGroup.Item>
-                                    <ListGroup.Item className="bg-dark text-light border-0"><FaUsers className="me-2 text-info" /><strong>Current Attendees:</strong> {event.currentAttendees}</ListGroup.Item>
-                                </ListGroup>
-                            </Card.Body>
-                        </Card>
-
-                        <Card className="bg-dark text-light border-0 shadow-sm">
-                            <Card.Body>
-                                <h4 className="text-info mb-4">Additional Information</h4>
-                                <Row>
-                                    <Col md={6}>
-                                        <h5 className="text-primary"><FaMicrophone className="me-2" />Speakers</h5>
-                                        <ul>{event.speakers}</ul>
-                                    </Col>
-                                    <Col md={6}>
-                                        <h5 className="text-primary"><FaConciergeBell className="me-2" />Services</h5>
-                                        <ul>{event.services}</ul>
-                                    </Col>
-                                </Row>
-                            </Card.Body>
-                        </Card>
-                    </Col>
-
-                    <Col md={4}>
-                        <div className="text-center mb-4">
-                            {!isRegistered ? (
-                                <Button variant="success" size="lg" onClick={handleRegister}>Register Now</Button>
-                            ) : (
-                                <Button variant="secondary" size="lg" disabled>Already Registered</Button>
-                            )}
-                        </div>
-
-                        <Card className="bg-dark text-light border-0 shadow-sm mb-4">
-                            <Card.Body>
-                                <h4 className="text-info">Ticket Information</h4>
-                                <ListGroup variant="flush" className="bg-dark">
-                                    <ListGroup.Item className="bg-dark text-light border-0"><strong>Tickets Required:</strong> {event.ticketsRequired ? <span className="text-success">Yes</span> : <span className="text-danger">No</span>}</ListGroup.Item>
-                                    {event.ticketsRequired && <ListGroup.Item className="bg-dark text-light border-0"><FaDollarSign className="me-2 text-success" /><strong>Price:</strong> ${event.price}</ListGroup.Item>}
-                                </ListGroup>
-                            </Card.Body>
-                        </Card>
-
-                        <Card className="bg-dark text-light border-0 shadow-sm">
-                            <Card.Body>
-                                <h4 className="text-info"><FaBuilding className="me-2" />Sponsors</h4>
-                                <ul>{event.sponsors}</ul>
-                            </Card.Body>
-                        </Card>
-                    </Col>
-                </Row>
-            </Container>
-        </div>
+      <PageError
+        message={error}
+        action={
+          <Button to="/search" variant="outline">
+            Back to search
+          </Button>
+        }
+      />
     );
-};
+  if (!event) return <PageError message="That event no longer exists." />;
 
-export default EventDetails;
+  const soldOut = event.ticketsRequired && event.currentAttendees >= event.maxAttendees;
+  const open = event.status === 'approved';
+  const canRegister = open && !soldOut && !event.isRegistered;
+  const hasHighlights = HIGHLIGHTS.some(([key]) => event[key]?.length > 0);
+
+  return (
+    <div className="app-page">
+      <div className="container">
+        {/* Editorial masthead: headline left, practical facts in a column. */}
+        <div className="split" style={{ alignItems: 'start' }}>
+          <div>
+            <Link to="/search" className="eyebrow">
+              ← All events
+            </Link>
+
+            <div className="tag-list" style={{ marginTop: 'var(--spacing-16)' }}>
+              <Tag>{event.category}</Tag>
+              <StatusTag status={event.status} />
+            </div>
+
+            <h1 className="t-display-lg" style={{ marginTop: 'var(--spacing-20)' }}>
+              {event.eventName}
+            </h1>
+
+            {event.description ? (
+              <p className="t-serif u-iron measure" style={{ marginTop: 'var(--spacing-24)' }}>
+                {event.description}
+              </p>
+            ) : (
+              <p className="t-serif u-graphite measure" style={{ marginTop: 'var(--spacing-24)' }}>
+                No description has been published for this event yet.
+              </p>
+            )}
+
+            {event.roar && event.roar !== 'Event not started yet' && (
+              <Notice tone="violet">{event.roar}</Notice>
+            )}
+          </div>
+
+          {/* The ticket panel: a white plate, the only place a CTA lives. */}
+          <div className="card card--pad-lg">
+            <SectionLabel>Attendance</SectionLabel>
+
+            <div className="stack" style={{ marginTop: 'var(--spacing-20)' }}>
+              <DataList
+                rows={[
+                  { key: 'Starts', value: formatDate(event.startDate) },
+                  { key: 'Ends', value: formatDate(event.endDate) },
+                  { key: 'Venue', value: event.venue },
+                  {
+                    key: 'Address',
+                    value:
+                      [event.street, event.city, event.state, event.postalCode, event.country]
+                        .filter(Boolean)
+                        .join(', ') || '—',
+                  },
+                  {
+                    key: 'Capacity',
+                    value: `${event.currentAttendees ?? 0} / ${event.maxAttendees ?? '—'}`,
+                  },
+                  { key: 'Organizer', value: event.organizerUsername },
+                ]}
+              />
+            </div>
+
+            <div style={{ marginTop: 'var(--spacing-24)' }}>
+              <SectionLabel>Entry</SectionLabel>
+              <p className="t-heading-sm" style={{ marginTop: 'var(--spacing-8)' }}>
+                {event.ticketsRequired ? formatPrice(event.price) : 'Free'}
+              </p>
+            </div>
+
+            {soldOut && (
+              <Notice tone="alert">This event is fully booked.</Notice>
+            )}
+
+            {event.isRegistered ? (
+              <Button to="/attendee/myevent-list" variant="outline" block>
+                You are registered — view your events
+              </Button>
+            ) : (
+              <Button
+                variant="primary"
+                block
+                disabled={!canRegister || registering}
+                onClick={handleRegister}
+              >
+                {registering
+                  ? 'Registering…'
+                  : !open
+                    ? 'Registration closed'
+                    : soldOut
+                      ? 'Sold out'
+                      : event.ticketsRequired
+                        ? 'Buy ticket'
+                        : 'Register'}
+              </Button>
+            )}
+
+            {!hasRole('Attendee') && open && (
+              <p className="field__hint" style={{ marginTop: 'var(--spacing-12)' }}>
+                You will be asked to sign in as an attendee first.
+              </p>
+            )}
+          </div>
+        </div>
+
+        {/* Highlights sit in a linen band — a tone shift, not a divider line. */}
+        {hasHighlights && (
+          <section className="band band--tight" style={{ marginTop: 'var(--spacing-80)' }}>
+            <div className="container">
+              <SectionLabel>What to expect</SectionLabel>
+              <div
+                className="grid grid--3"
+                style={{ marginTop: 'var(--spacing-24)' }}
+              >
+                {HIGHLIGHTS.filter(([key]) => event[key]?.length > 0).map(([key, label]) => (
+                  <Chips key={key} label={label} items={event[key]} />
+                ))}
+              </div>
+            </div>
+          </section>
+        )}
+
+        <p className="t-mono u-smoke" style={{ marginTop: 'var(--spacing-64)' }}>
+          Last updated {formatDateTime(event.updatedAt || event.createdAt)}
+        </p>
+      </div>
+    </div>
+  );
+}

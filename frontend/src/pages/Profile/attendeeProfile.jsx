@@ -1,246 +1,243 @@
-import React, { useEffect, useState } from "react";
-import { Card, Form, Button } from "react-bootstrap";
-import { FaCamera } from "react-icons/fa";
-import { useNavigate } from "react-router-dom";
-import axios from "axios";
+import React, { useState } from 'react';
+import { toast } from 'react-toastify';
+import { getMyProfile, updateMyProfile, uploadProfileImage } from '../../api/endpoints';
+import { errorMessage } from '../../api/client';
+import { formatDateTime } from '../../utils/format';
+import Button from '../../components/ui/Button';
+import { Input } from '../../components/ui/Field';
+import PageHeader from '../../components/ui/PageHeader';
+import {
+  DataList,
+  Notice,
+  PageLoading,
+  PageError,
+  SectionLabel,
+} from '../../components/ui/Surface';
 
-function ProfilePage() {
-  const navigate = useNavigate();
+/**
+ * Attendee profile.
+ *
+ * Read-only until "Edit" is pressed — a profile is mostly confirmation, not a
+ * form. The photo is uploadable at any time since it is a separate endpoint.
+ */
+export default function AttendeeProfile() {
   const [user, setUser] = useState(null);
+  const [draft, setDraft] = useState({ username: '', email: '', mobileNumber: '' });
   const [loading, setLoading] = useState(true);
-  const [isEditing, setIsEditing] = useState(false);
-  const [editedUser, setEditedUser] = useState(null);
-  const [formData,setFormData] = useState({});
+  const [editing, setEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState('');
+  const [errors, setErrors] = useState({});
 
-  useEffect(() => {
-    if (user) {
-      setEditedUser({ ...user });
+  React.useEffect(() => {
+    let cancelled = false;
+
+    getMyProfile()
+      .then((data) => {
+        if (cancelled) return;
+        setUser(data);
+        setDraft({
+          username: data.username || '',
+          email: data.email || '',
+          mobileNumber: data.mobileNumber || '',
+        });
+      })
+      .catch((err) => !cancelled && setError(errorMessage(err, 'Could not load your profile')))
+      .finally(() => !cancelled && setLoading(false));
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const handleSave = async (e) => {
+    e.preventDefault();
+
+    const next = {};
+    if (!draft.username.trim()) next.username = 'Username is required.';
+    if (!draft.email.trim()) next.email = 'Email is required.';
+    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(draft.email))
+      next.email = 'Enter a valid email address.';
+    setErrors(next);
+    if (Object.keys(next).length) return;
+
+    setSaving(true);
+    setError('');
+    try {
+      const updated = await updateMyProfile({
+        username: draft.username.trim(),
+        email: draft.email.trim(),
+        mobile_number: draft.mobileNumber.trim() || undefined,
+      });
+      setUser(updated);
+      setEditing(false);
+      toast.success('Profile updated');
+    } catch (err) {
+      setError(errorMessage(err, 'Could not save your profile'));
+    } finally {
+      setSaving(false);
     }
-  }, [user]);
-
-  const handleEditChange = (e) => {
-    const { name, value } = e.target;
-    setEditedUser((prev) => ({ ...prev, [name]: value }));
   };
 
   const handleImageChange = async (e) => {
-    const file = e.target.files[0];
-    if (file) {
-      const formData = new FormData();
-      formData.append("profileImg", file); 
-  
-      try {
-        const response = await axios.put(`${import.meta.env.VITE_BACKEND_SERVER}/api/attendee/profileImageUpdate`, formData, {
-          headers: { "Content-Type": "multipart/form-data" },
-          withCredentials: true,
-        });
-  
-        if (response.data.success) {
-          setUser((prevData) => ({
-            ...prevData,
-            profileImg: response.data.profileImg, 
-          }));
-        }
-      } catch (err) {
-        setError("Failed to upload profile image. Try again.");
-      }
-    }
-  };
-  
+    const file = e.target.files?.[0];
+    if (!file) return;
 
-  const saveChanges = async () => {
+    setUploading(true);
     try {
-      const response = await axios.put(
-        `${import.meta.env.VITE_BACKEND_SERVER}/api/attendee/profileupdate`,
-        editedUser,
-        { withCredentials: true }
-      );
-      const updatedUser = response.data.user;
-      setUser(updatedUser);
-      setIsEditing(false);
-    } catch (error) {
-      console.error("Error updating user:", error);
-    }
-  };
-
-  const getUser = async () => {
-    try {
-      const response = await axios.get(
-        `${import.meta.env.VITE_BACKEND_SERVER}/api/attendee/profile`,
-        { withCredentials: true }
-      );
-      setUser(response.data.user);
-      setLoading(false);
+      const updated = await uploadProfileImage(file);
+      setUser((prev) => ({ ...prev, profileImg: updated.profileImg }));
+      toast.success('Profile photo updated');
     } catch (err) {
-      console.log(err);
+      toast.error(errorMessage(err, 'Could not upload the image'));
+    } finally {
+      setUploading(false);
+      e.target.value = '';
     }
   };
 
-  useEffect(() => {
-    getUser();
-  }, []);
-
-  if (loading) return <p>Loading...</p>;
+  if (loading) return <PageLoading label="Loading profile" />;
+  if (error && !user) return <PageError message={error} />;
 
   return (
-    <>
-      <div className="d-flex justify-content-center align-items-center vh-100 dark-bg">
-        <Card className="profile-card text-light">
-          <Card.Body>
-            <div className="text-center position-relative">
+    <div className="app-page">
+      <div className="container">
+        <PageHeader
+          eyebrow="Attendee"
+          title="Your profile"
+          actions={
+            editing ? null : (
+              <Button variant="outline" onClick={() => setEditing(true)}>
+                Edit profile
+              </Button>
+            )
+          }
+        >
+          Your account details. Your ticket history lives under “My tickets”.
+        </PageHeader>
+
+        {error && <Notice tone="alert">{error}</Notice>}
+
+        <div className="split" style={{ alignItems: 'start' }}>
+          {/* Photo and account facts. */}
+          <div>
+            <label className="avatar-upload" htmlFor="imageUpload">
               <img
-                src={editedUser?.profileImg || "/images/sampleProfile.webp"}
-                alt="Profile"
-                className="profile-img"
+                className="avatar avatar--xl"
+                src={user.profileImg || '/images/sampleProfile.webp'}
+                alt=""
+                style={{ cursor: uploading ? 'progress' : 'pointer' }}
               />
-              <label htmlFor="imageUpload" className="camera-icon text-light">
-                <FaCamera />
-              </label>
-              <input
-                type="file"
-                id="imageUpload"
-                accept="image/*"
-                className="d-none"
-                onChange={handleImageChange}
-              />
+              <span className="avatar-upload__badge">
+                {uploading ? 'Uploading' : 'Change photo'}
+              </span>
+            </label>
+            <input
+              type="file"
+              id="imageUpload"
+              accept="image/*"
+              className="visually-hidden"
+              disabled={uploading}
+              onChange={handleImageChange}
+            />
+
+            <div style={{ marginTop: 'var(--spacing-32)' }}>
+              <SectionLabel>Account</SectionLabel>
+              <div style={{ marginTop: 'var(--spacing-16)' }}>
+                <DataList
+                  rows={[
+                    { key: 'Username', value: user.username },
+                    { key: 'Email', value: user.email },
+                    { key: 'Mobile', value: user.mobileNumber || '—' },
+                    { key: 'Member since', value: formatDateTime(user.createdAt) },
+                  ]}
+                />
+              </div>
             </div>
-            <h4 className="text-center mt-2">Profile</h4>
-            <hr />
-            {isEditing ? (
-              <>
-                <Form.Group className="mb-2">
-                  <Form.Label>Name</Form.Label>
-                  <Form.Control
-                    type="text"
-                    name="username"
-                    value={editedUser?.username || ""}
-                    onChange={handleEditChange}
-                    className="dark-input"
+          </div>
+
+          {/* Edit form, or a quiet prompt when not editing. */}
+          <div>
+            {editing ? (
+              <form className="card card--pad-lg" onSubmit={handleSave} noValidate>
+                <SectionLabel>Edit details</SectionLabel>
+
+                <div className="stack" style={{ marginTop: 'var(--spacing-20)' }}>
+                  <Input
+                    label="Username"
+                    value={draft.username}
+                    onChange={(e) => setDraft((d) => ({ ...d, username: e.target.value }))}
+                    error={errors.username}
                   />
-                </Form.Group>
-                <Form.Group className="mb-2">
-                  <Form.Label>Email</Form.Label>
-                  <Form.Control
+                  <Input
+                    label="Email"
                     type="email"
-                    name="email"
-                    value={editedUser?.email || ""}
-                    onChange={handleEditChange}
-                    className="dark-input"
+                    value={draft.email}
+                    onChange={(e) => setDraft((d) => ({ ...d, email: e.target.value }))}
+                    error={errors.email}
                   />
-                </Form.Group>
-                <Form.Group className="mb-3">
-                  <Form.Label>Mobile</Form.Label>
-                  <Form.Control
-                    type="text"
-                    name="mobileNumber"
-                    value={editedUser?.mobileNumber || ""}
-                    onChange={handleEditChange}
-                    className="dark-input"
+                  <Input
+                    label="Mobile"
+                    type="tel"
+                    value={draft.mobileNumber}
+                    onChange={(e) => setDraft((d) => ({ ...d, mobileNumber: e.target.value }))}
+                    hint="Optional."
                   />
-                </Form.Group>
-                <div className="d-flex justify-content-between">
-                  <Button variant="success" onClick={saveChanges}>
-                    Save
-                  </Button>
+                </div>
+
+                <div
+                  className="btn-row"
+                  style={{
+                    marginTop: 'var(--spacing-32)',
+                    paddingTop: 'var(--spacing-24)',
+                    borderTop: '1px solid var(--color-hairline)',
+                    justifyContent: 'flex-end',
+                  }}
+                >
                   <Button
-                    variant="secondary"
-                    onClick={() => setIsEditing(false)}
+                    variant="ghost"
+                    onClick={() => {
+                      setEditing(false);
+                      setErrors({});
+                      setDraft({
+                        username: user.username || '',
+                        email: user.email || '',
+                        mobileNumber: user.mobileNumber || '',
+                      });
+                    }}
+                    disabled={saving}
                   >
                     Cancel
                   </Button>
+                  <Button type="submit" disabled={saving}>
+                    {saving ? 'Saving…' : 'Save changes'}
+                  </Button>
                 </div>
-              </>
+              </form>
             ) : (
-              <>
-                <p>
-                  <strong>Name:</strong> {user?.username}
+              <div className="card card--warm">
+                <SectionLabel>Tickets</SectionLabel>
+                <p className="t-heading-sm" style={{ marginTop: 'var(--spacing-16)' }}>
+                  Every ticket you have held, in one list.
                 </p>
-                <p>
-                  <strong>Email:</strong> {user?.email}
+                <p className="t-body-sm u-iron" style={{ marginTop: 'var(--spacing-12)' }}>
+                  Booking codes are re-issued from the server, so a lost
+                  confirmation is recoverable rather than a dead end.
                 </p>
-                <p>
-                  <strong>Mobile:</strong> {user?.mobileNumber}
-                </p>
-                <div className="d-flex justify-content-between">
-                  <Button variant="warning" onClick={() => setIsEditing(true)}>
-                    Edit
+                <div className="btn-row" style={{ marginTop: 'var(--spacing-24)' }}>
+                  <Button to="/attendee/my-tickets" variant="outline" arrow>
+                    View my tickets
                   </Button>
-                  <Button variant="danger" onClick={() => navigate("/")}>
-                    Close
+                  <Button to="/attendee/myevent-list" variant="ghost">
+                    My events
                   </Button>
                 </div>
-              </>
+              </div>
             )}
-          </Card.Body>
-        </Card>
+          </div>
+        </div>
       </div>
-      <style>{`
-        body {
-          background-color: #121212;
-          color: #fff;
-        }
-        .dark-bg {
-          background-color: #121212;
-        }
-        .profile-card {
-          width: 350px;
-          background: #1e1e1e;
-          padding: 20px;
-          border-radius: 10px;
-          box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.3);
-        }
-        .profile-img {
-          width: 100px;
-          height: 100px;
-          border-radius: 50%;
-          object-fit: cover;
-          border: 2px solid #444;
-        }
-        .camera-icon {
-          position: absolute;
-          bottom: 0;
-          right: 35%;
-          background: #333;
-          padding: 5px;
-          border-radius: 50%;
-          cursor: pointer;
-        }
-        .camera-icon:hover {
-          background: #444;
-        }
-        .dark-input {
-          background-color: #2c2c2c;
-          border: 1px solid #444;
-          color: #fff;
-        }
-        .dark-input:focus {
-          background-color: #333;
-          color: #fff;
-          border-color: #555;
-          box-shadow: none;
-        }
-        .text-light {
-          color: #fff;
-        }
-        .btn-warning {
-          background-color: #ffc107;
-          border: none;
-        }
-        .btn-danger {
-          background-color: #dc3545;
-          border: none;
-        }
-        .btn-success {
-          background-color: #28a745;
-          border: none;
-        }
-        .btn-secondary {
-          background-color: #6c757d;
-          border: none;
-        }
-      `}</style>
-    </>
+    </div>
   );
 }
-
-export default ProfilePage;

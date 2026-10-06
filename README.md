@@ -1,6 +1,6 @@
 # 🎉 EventSphere
 
-EventSphere is a full-stack event management platform built using the MERN stack.  
+EventSphere is a full-stack event management platform.  
 It allows users to create, manage, and register for events with secure authentication and role-based access control.
 
 ---
@@ -10,31 +10,34 @@ It allows users to create, manage, and register for events with secure authentic
 ### Frontend
 - React.js
 - Vite
-- HTML5, CSS3
+- Plain CSS with design tokens (no UI framework)
 - Axios
 
 ### Backend
-- Node.js
-- Express.js
-- MongoDB
-- Mongoose
-- JWT Authentication
+- Python 3.11+
+- FastAPI
+- PostgreSQL 16
+- SQLAlchemy 2.0 (async, asyncpg)
+- Alembic (migrations)
+- Pydantic v2
+- JWT authentication
 
 ### Tools
 - Git & GitHub
-- Postman
-- Nodemon
-- Babel
+- Docker (local Postgres only — not required in production)
+- uv (Python package management)
+- pytest
 
 ---
 
 ## ✨ Features
 
-- 🔐 User Authentication (JWT-based)
-- 👥 Role-based Access (Admin / Organizer / Attendee)
-- 📅 Create, Update, Delete Events
+- 🔐 User Authentication (JWT-based, cookie session)
+- 👥 Role-based Access (Admin / SuperAdmin / Organizer / Attendee)
+- 📅 Create, Update, Delete Events with approval workflow
 - 🎟️ Event Registration & Ticket Management
-- 📂 Image Upload Support
+- 📂 Image Upload Support (Cloudinary)
 - 📊 Organizer Dashboard
-- 🔒 Secure API routes with middleware
+- 🔒 Ownership checks on every mutating route
+- 🔍 Full-text event search
 

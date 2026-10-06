@@ -1,182 +1,153 @@
-import React, { useState ,useEffect} from "react";
-import axios from "axios";
-import { Form, Button, Container, Row, Col, InputGroup } from "react-bootstrap";
-import { FaUser, FaMusic, FaAlignLeft, FaGlobe, FaInstagram, FaTwitter, FaCalendar } from "react-icons/fa";
-import "./addArtist.css";
-import {useNavigate} from 'react-router-dom'
+import React, { useState } from 'react';
+import { toast } from 'react-toastify';
+import { createArtist } from '../../api/endpoints';
+import { errorMessage } from '../../api/client';
+import Button from '../../components/ui/Button';
+import { Input, Textarea } from '../../components/ui/Field';
+import PageHeader from '../../components/ui/PageHeader';
+import { SectionLabel } from '../../components/ui/Surface';
 
-const ArtistForm = () => {
-  const navigate = new useNavigate();
-  const [formData, setFormData] = useState({
-    artistName: "",
-    genre: "",
-    bio: "",
-    birthdate: "",
-    socialLinks: {
-      website: "",
-      instagram: "",
-      twitter: "",
-    },
-  });
+const EMPTY = {
+  artistName: '',
+  genre: '',
+  bio: '',
+  birthDate: '',
+  website: '',
+  instagram: '',
+  twitter: '',
+};
 
-  const [previewImage, setPreviewImage] = useState(null);
+/** Add an artist to the platform's reference data. */
+export default function AddArtist() {
+  const [form, setForm] = useState(EMPTY);
   const [errors, setErrors] = useState({});
-  const [loading, setLoading] = useState(false);
-  const [successMessage, setSuccessMessage] = useState("");
+  const [submitting, setSubmitting] = useState(false);
 
-  const handleChange = (e) => {
-    const { name, value } = e.target;
-    setFormData((prev) => ({
-      ...prev,
-      [name]: value,
-    }));
-  };
+  const update = (key) => (e) => setForm((p) => ({ ...p, [key]: e.target.value }));
 
-  const handleSocialChange = (e) => {
-    const { name, value } = e.target;
-    setFormData((prev) => ({
-      ...prev,
-      socialLinks: {
-        ...prev.socialLinks,
-        [name]: value,
-      },
-    }));
-  };
-
-  const validateForm = () => {
-    let errors = {};
-    if (!formData.artistName) errors.artistName = "Artist name is required.";
-    if (!formData.genre) errors.genre = "Genre is required.";
-    setErrors(errors);
-    return Object.keys(errors).length === 0;
+  const validate = () => {
+    const next = {};
+    if (!form.artistName.trim()) next.artistName = 'Artist name is required.';
+    if (!form.genre.trim()) next.genre = 'Genre is required.';
+    if (form.birthDate && new Date(form.birthDate) > new Date())
+      next.birthDate = 'Birth date cannot be in the future.';
+    if (form.website && !/^https?:\/\//i.test(form.website))
+      next.website = 'Include the full URL, starting with http:// or https://';
+    setErrors(next);
+    return Object.keys(next).length === 0;
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!validateForm()) return;
-  
+    if (!validate()) return;
+
+    setSubmitting(true);
     try {
-      setLoading(true);
-  
-      console.log("Raw formData before conversion:", formData); 
-  
-      // Convert to FormData
-      const formDataToSend = new FormData();
-      for (const key in formData) {
-        if (formData[key] !== undefined && formData[key] !== null) {
-          formDataToSend.append(key, formData[key]);
-        }
-      }
-      const formDataObject = {};
-        formDataToSend.forEach((value, key) => {
-        formDataObject[key] = value;
+      await createArtist({
+        artist_name: form.artistName.trim(),
+        genre: form.genre.trim(),
+        bio: form.bio.trim() || undefined,
+        birth_date: form.birthDate || undefined,
+        social_links: {
+          website: form.website.trim() || undefined,
+          instagram: form.instagram.trim() || undefined,
+          twitter: form.twitter.trim() || undefined,
+        },
       });
-      const response = await axios.post(
-        `${import.meta.env.VITE_BACKEND_SERVER}/api/admin/add-artist`,
-        formDataObject,
-        { withCredentials: true } // Let Axios handle headers
-      );
-  
-      setSuccessMessage("Artist added successfully!");
-      if (response.status === 200) {
-        navigate("/");
-      }
-    } catch (error) {
-      console.error("Error adding artist:", error);
+      toast.success(`${form.artistName.trim()} added`);
+      setForm(EMPTY);
+      setErrors({});
+    } catch (err) {
+      toast.error(errorMessage(err, 'Could not add the artist'));
     } finally {
-      setLoading(false);
+      setSubmitting(false);
     }
   };
-  
-  
+
   return (
-    <Container className="artist-form-container">
-      <h2 className="text-center mb-4 " >Add Artist</h2>
-      {successMessage && <p className="success-message">{successMessage}</p>}
-      <Form onSubmit={handleSubmit} className="p-4 border rounded shadow-lg bg-dark text-light">
-        
-        {/* Artist Name */}
-        <Form.Group className="mb-3">
-          <Form.Label><FaUser className="icon" /> Artist Name</Form.Label>
-          <InputGroup>
-            <Form.Control
-              type="text"
-              name="artistName"
-              placeholder="Enter artist name"
-              value={formData.artistName}
-              onChange={handleChange}
-              isInvalid={!!errors.artistName}
+    <div className="app-page">
+      <div className="container container--narrow">
+        <PageHeader eyebrow="Admin" title="Add an artist">
+          Artists appear as reference data on events and in attendee search.
+        </PageHeader>
+
+        <form className="card card--pad-lg" onSubmit={handleSubmit} noValidate>
+          <SectionLabel>Identity</SectionLabel>
+
+          <div style={{ marginTop: 'var(--spacing-20)' }}>
+            <Input
+              label="Artist name"
+              value={form.artistName}
+              onChange={update('artistName')}
+              error={errors.artistName}
             />
-          </InputGroup>
-          <Form.Control.Feedback type="invalid">{errors.artistName}</Form.Control.Feedback>
-        </Form.Group>
+            <Input
+              label="Genre"
+              value={form.genre}
+              onChange={update('genre')}
+              error={errors.genre}
+              placeholder="Jazz, techno, spoken word…"
+            />
+            <Textarea
+              label="Biography"
+              rows={4}
+              value={form.bio}
+              onChange={update('bio')}
+            />
+            <Input
+              label="Birth date"
+              type="date"
+              value={form.birthDate}
+              onChange={update('birthDate')}
+              error={errors.birthDate}
+            />
+          </div>
 
-        {/* Genre */}
-        <Form.Group className="mb-3">
-          <Form.Label><FaMusic className="icon" /> Genre</Form.Label>
-          <Form.Control
-            type="text"
-            name="genre"
-            placeholder="Enter genre"
-            value={formData.genre}
-            onChange={handleChange}
-            isInvalid={!!errors.genre}
-          />
-          <Form.Control.Feedback type="invalid">{errors.genre}</Form.Control.Feedback>
-        </Form.Group>
+          <SectionLabel className="u-mt-24" />
 
-        {/* Bio */}
-        <Form.Group className="mb-3">
-          <Form.Label><FaAlignLeft className="icon" /> Bio</Form.Label>
-          <Form.Control
-            as="textarea"
-            rows={3}
-            name="bio"
-            placeholder="Enter bio"
-            value={formData.bio}
-            onChange={handleChange}
-          />
-        </Form.Group>
+          <div style={{ marginTop: 'var(--spacing-20)' }}>
+            <Input
+              label="Website"
+              type="url"
+              value={form.website}
+              onChange={update('website')}
+              error={errors.website}
+              placeholder="https://"
+            />
+            <Input
+              label="Instagram"
+              value={form.instagram}
+              onChange={update('instagram')}
+              placeholder="@handle"
+            />
+            <Input
+              label="Twitter"
+              value={form.twitter}
+              onChange={update('twitter')}
+              placeholder="@handle"
+            />
+          </div>
 
-        {/* Birth Date */}
-        <Form.Group className="mb-3">
-          <Form.Label><FaCalendar className="icon" /> Birth Date</Form.Label>
-          <Form.Control
-            type="date"
-            name="birthdate"
-            value={formData.birthdate}
-            onChange={handleChange}
-          />
-        </Form.Group>
-
-        {/* Social Links */}
-        <Row>
-          <Col>
-            <Form.Group className="mb-3">
-              <Form.Label><FaGlobe className="icon" /> Website</Form.Label>
-              <Form.Control type="text" name="website" placeholder="Website URL" value={formData.socialLinks.website} onChange={handleSocialChange} />
-            </Form.Group>
-          </Col>
-          <Col>
-            <Form.Group className="mb-3">
-              <Form.Label><FaInstagram className="icon" /> Instagram</Form.Label>
-              <Form.Control type="text" name="instagram" placeholder="Instagram URL" value={formData.socialLinks.instagram} onChange={handleSocialChange} />
-            </Form.Group>
-          </Col>
-          <Col>
-            <Form.Group className="mb-3">
-              <Form.Label><FaTwitter className="icon" /> Twitter</Form.Label>
-              <Form.Control type="text" name="twitter" placeholder="Twitter URL" value={formData.socialLinks.twitter} onChange={handleSocialChange} />
-            </Form.Group>
-          </Col>
-        </Row>
-
-        <Button type="submit" variant="primary" className="w-100" disabled={loading}>
-          {loading ? "Adding..." : "Add Artist"}
-        </Button>
-      </Form>
-    </Container>
+          <div
+            className="btn-row"
+            style={{ marginTop: 'var(--spacing-32)', justifyContent: 'flex-end' }}
+          >
+            <Button
+              variant="ghost"
+              onClick={() => {
+                setForm(EMPTY);
+                setErrors({});
+              }}
+              disabled={submitting}
+            >
+              Reset
+            </Button>
+            <Button type="submit" disabled={submitting}>
+              {submitting ? 'Saving…' : 'Add artist'}
+            </Button>
+          </div>
+        </form>
+      </div>
+    </div>
   );
-};
-
-export default ArtistForm;
+}

@@ -3,28 +3,33 @@ import react from '@vitejs/plugin-react';
 import path from 'path';
 
 export default defineConfig(({ mode }) => {
-  // Load environment variables from the correct .env file
-  const env = loadEnv(mode, path.resolve(__dirname, '../../'), '');
+  // Load from the repo root so one .env serves both frontend and backend.
+  const env = loadEnv(mode, path.resolve(__dirname, '../'), '');
 
   return {
     plugins: [react()],
 
     server: {
+      port: 5173,
       hmr: {
-        host: 'localhost', // Change this if needed
+        host: 'localhost',
         port: 5173,
       },
       proxy: {
-        '/api': 'http://localhost:8000', // Proxy API calls to backend
+        // Lets the app call relative /api paths during development.
+        // The axios client uses an absolute base URL, so this is a fallback
+        // for anything that hits the API without one.
+        '/api': {
+          target: env.VITE_BACKEND_SERVER || 'http://localhost:8000',
+          changeOrigin: true,
+        },
       },
     },
 
     define: {
-      'import.meta.env.VITE_BACKEND_SERVER': JSON.stringify(env.VITE_BACKEND_SERVER),
-    },
-
-    optimizeDeps: {
-      include: ['jwt-decode'], // Ensures proper handling of jwt-decode
+      'import.meta.env.VITE_BACKEND_SERVER': JSON.stringify(
+        env.VITE_BACKEND_SERVER || 'http://localhost:8000'
+      ),
     },
   };
 });
