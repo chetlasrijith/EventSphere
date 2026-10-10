@@ -21,7 +21,7 @@ import EventDetails from './pages/eventDetails';
 import SearchEvents from './pages/Attendee/searchEvents';
 import { currentRole } from './utils/auth';
 
-const ADMIN_ROLES = ['Admin', 'SuperAdmin'];
+const ADMIN_ROLES = ['admin', 'superadmin'];
 
 /** Routes that own their entire layout and must not be wrapped in the shell. */
 const BARE_ROUTES = [
@@ -35,7 +35,7 @@ const BARE_ROUTES = [
 
 /** Top-level gate: sends a signed-out or wrong-role visitor to the login page. */
 function RoleGate({ role, element }) {
-  const active = currentRole();
+  const active = currentRole()?.toLowerCase();
   const allowed = role === 'admin' ? ADMIN_ROLES.includes(active) : active === role;
   return allowed ? element : <Navigate to={`/${role}/login`} replace />;
 }
