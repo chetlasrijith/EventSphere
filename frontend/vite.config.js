@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 
 const frontendDir = path.dirname(fileURLToPath(import.meta.url));
 
-export default defineConfig(({ mode }) => {
+export default defineConfig(({ mode, command }) => {
   // Load from the repo root so one .env serves both frontend and backend.
   const env = loadEnv(mode, path.resolve(frontendDir, '../'), '');
 
@@ -31,7 +31,7 @@ export default defineConfig(({ mode }) => {
 
     define: {
       'import.meta.env.VITE_BACKEND_SERVER': JSON.stringify(
-        env.VITE_BACKEND_SERVER || 'http://localhost:8000'
+        command === 'serve' ? env.VITE_BACKEND_SERVER || 'http://localhost:8000' : ''
       ),
     },
   };
