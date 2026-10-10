@@ -19,25 +19,26 @@ It allows users to create, manage, and register for events with secure authentic
 
 ## Deployment
 
-Recommended topology: Vercel hosts the React build and proxies `/api/*` to a
-Dockerized FastAPI service. The browser sees one origin, so its JWT cookie
-remains readable by the React role navigation without relying on third-party
-cookies. PostgreSQL remains a separate managed service.
+Recommended topology: Cloudflare Workers serves the React build and proxies
+`/api/*` to a Dockerized FastAPI service. The browser sees one origin, so its
+JWT cookie remains readable by the React role navigation without relying on
+third-party cookies. PostgreSQL remains a separate managed service.
 
-### Vercel frontend
+### Cloudflare Worker frontend
 
-- Root directory: `frontend` (the Vercel project root)
+- Root directory: `frontend`
 - Build command: `npm run build`
-- Framework: Vite (auto-detected); output directory: `dist`
-- Project environment variable `BACKEND_URL`: the FastAPI origin, for example
-	`https://eventsphere-api.example.com` (no `/api` suffix or trailing slash)
-- Leave `VITE_BACKEND_SERVER` unset so production requests use relative
-	`/api/...` URLs and `frontend/vercel.json` proxies them to the API.
+- Deploy command: `npx wrangler deploy`
+- Wrangler serves `dist` and rewrites unknown app routes to `index.html` for
+	React Router. The Worker handles `/api/*` before static assets.
+- Add the Worker runtime variable `BACKEND_URL`, for example
+	`https://eventsphere-api.example.com` (no `/api` suffix or trailing slash).
+- Leave `VITE_BACKEND_SERVER` unset so production API calls use relative
+	`/api/...` URLs and the Worker forwards them to FastAPI.
 
-Set `BACKEND_URL` in Vercel's Production and Preview environments, then
-redeploy. Use the production API for previews only if preview data should share
-production data. The proxy forwards API requests and responses, including the
-session cookie. Use `COOKIE_SAMESITE=lax` for this same-origin browser setup.
+Set `BACKEND_URL` in the Cloudflare Worker settings and redeploy. The proxy
+forwards API requests and responses, including the session cookie. Use
+`COOKIE_SAMESITE=lax` for this same-origin browser setup.
 
 ### FastAPI and PostgreSQL
 
@@ -52,7 +53,7 @@ JWT_ALGORITHM=HS256
 ACCESS_TOKEN_EXPIRE_DAYS=15
 ENVIRONMENT=production
 DEBUG=false
-CORS_ORIGINS=https://your-vercel-domain.example
+CORS_ORIGINS=https://eventsphere.<your-workers-subdomain>.workers.dev
 COOKIE_SAMESITE=lax
 CLOUDINARY_CLOUD_NAME=...
 CLOUDINARY_API_KEY=...
@@ -75,11 +76,12 @@ Compose starts PostgreSQL and the API on ports 5432 and 8000. Run the React dev
 server separately with `cd frontend && npm run dev`. Local Vite requests go
 directly to `http://localhost:8000`.
 
-Vercel hosts the frontend, not this Compose stack. Run the API container on a
-container host and use a managed PostgreSQL database. For direct browser calls
-to a separately hosted API, `COOKIE_SAMESITE=none` alone is insufficient for
-this app because the frontend also needs to read the JWT cookie; keep the
-same-origin Vercel proxy or add shared-domain cookie support first.
+Cloudflare Workers serves the frontend, but PostgreSQL remains a separate
+managed service. Cloudflare Containers can host the API image on a Workers Paid
+plan; that requires additional Container and Durable Object configuration. For
+direct browser calls to a separately hosted API, `COOKIE_SAMESITE=none` alone
+is insufficient for this app because the frontend also needs to read the JWT
+cookie; keep the same-origin Worker proxy or add shared-domain cookie support.
 
 ---
 
